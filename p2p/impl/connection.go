@@ -63,6 +63,11 @@ func (c *Connection) LocalAddr() net.Addr {
 
 // Close closes current connection
 func (c *Connection) Close() error {
+
+	// notify disconn
+	c.h.NotifyAll(func(n p2p.Notifiee) {
+		n.Disconnected(c)
+	})
 	return c.conn.Close()
 }
 

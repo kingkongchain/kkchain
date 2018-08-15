@@ -1,6 +1,5 @@
 package p2p
 
-
 // ConnManager defines interface to manage connections
 type ConnManager interface {
 	// Add a connection after handshake is ok

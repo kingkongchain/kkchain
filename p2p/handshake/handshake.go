@@ -1,29 +1,29 @@
 package handshake
 
 import (
-	"time"
 	"context"
 	"errors"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/glog"
-	"github.com/sirupsen/logrus"
 	"github.com/invin/kkchain/p2p"
+	"github.com/sirupsen/logrus"
 )
 
 const (
-	protocolHandshake 	= "/kkchain/p2p/handshake/1.0.0"
-	handshakeTimeout 	= 5*time.Second
+	protocolHandshake = "/kkchain/p2p/handshake/1.0.0"
+	handshakeTimeout  = 5 * time.Second
 )
 
 var (
-	errProtocol 		= errors.New("wrong protocol")
-	errHandshake 		= errors.New("failed to handshake")
-	errReadTimeout		= errors.New("read message timeout")
+	errProtocol    = errors.New("wrong protocol")
+	errHandshake   = errors.New("failed to handshake")
+	errReadTimeout = errors.New("read message timeout")
 )
 
 var (
-	log              	= logrus.New()
+	log = logrus.New()
 )
 
 // Handshake implements protocol for handshaking
@@ -42,24 +42,24 @@ func New(host p2p.Host) *Handshake {
 }
 
 // Handshake sends message for handshake and returns response
-// FIXME: 
+// FIXME:
 func (hs *Handshake) Handshake(c p2p.Conn, dir p2p.ConnDir) error {
 	errc := make(chan error, 2)
 	count := 1
 	// send handshake message if we're outbound connection
 	if dir == p2p.Outbound {
 		count = 2
-		go func () {
+		go func() {
 			msg := NewMessage(Message_HELLO)
 			BuildHandshake(msg)
 			errc <- c.WriteMessage(msg, protocolHandshake)
 		}()
 	}
-	
+
 	go func() {
-		// FIXME: 
+		// FIXME:
 		if dir == p2p.Outbound {
-			time.Sleep(2*time.Second)
+			time.Sleep(2 * time.Second)
 		}
 
 		msg, protocol, err := c.ReadMessage()
@@ -163,4 +163,3 @@ func (hs *Handshake) Disconnected(c p2p.Conn) {
 		"remoteID": c.RemotePeer(),
 	}).Info("A peer is disconnected")
 }
-
