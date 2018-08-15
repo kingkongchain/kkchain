@@ -2,19 +2,18 @@ package p2p
 
 import (
 	"io"
-	
+
+	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/crypto"
 	"github.com/jbenet/goprocess"
-	"github.com/gogo/protobuf/proto"
 )
 
 // ConnDir defines connection direction
-type ConnDir	int
-
+type ConnDir int
 
 const (
 	// Inbound connection
-	Inbound	ConnDir = iota
+	Inbound ConnDir = iota
 	// Outbound connection
 	Outbound
 )
@@ -75,6 +74,6 @@ type Conn interface {
 // little work as possible within their notification, putting any blocking work
 // out into a goroutine.
 type Notifiee interface {
-	Connected(Conn)      // called when a connection opened
-	Disconnected(Conn)   // called when a connection closed
+	Connected(Conn)    // called when a connection opened
+	Disconnected(Conn) // called when a connection closed
 }

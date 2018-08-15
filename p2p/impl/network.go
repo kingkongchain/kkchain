@@ -1,17 +1,17 @@
 package impl
 
 import (
-	"fmt"
 	"encoding/hex"
+	"fmt"
 	"net"
 
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/dht"
+	"github.com/jbenet/goprocess"
 	"github.com/pkg/errors"
 	"github.com/sirupsen/logrus"
-	"github.com/jbenet/goprocess"
 )
 
 var (
@@ -19,10 +19,9 @@ var (
 	log              = logrus.New()
 )
 
-
 // Network represents the whole stack of p2p communication between peers
 type Network struct {
-	// Configuration 
+	// Configuration
 	conf p2p.Config
 
 	// Host to manage connections
@@ -35,12 +34,12 @@ type Network struct {
 	keys *crypto.KeyPair
 
 	// Message modules
-	dht *dht.DHT
+	dht   *dht.DHT
 	chain *chain.Chain
 
 	// Bootstrap seed nodes
 	BootstrapNodes []string
-	
+
 	// process to manager other child processes
 	proc goprocess.Process
 }
@@ -77,17 +76,17 @@ func (n *Network) Start() error {
 	}
 
 	// Use goprocess to setup process tree
-	n.proc = goprocess.WithTeardown(func () error {
+	n.proc = goprocess.WithTeardown(func() error {
 		log.Info("Tear down network")
 		// TODO: add other clean code
 		return nil
 	})
 
 	// Start DHT as child of network process
-	n.proc.Go(func (p goprocess.Process) {
+	n.proc.Go(func(p goprocess.Process) {
 		n.dht.Start()
 		select {
-		case <- p.Closing(): 
+		case <-p.Closing():
 			log.Info("closing dht")
 			n.dht.Stop()
 		}
@@ -103,7 +102,7 @@ func (n *Network) Start() error {
 	}
 
 	// Start process to connect seed nodes
-	n.proc.Go(func (p goprocess.Process) {
+	n.proc.Go(func(p goprocess.Process) {
 		n.bootstrap(p)
 	})
 
@@ -143,17 +142,17 @@ func (n *Network) startListening() error {
 	n.listenAddr = laddr.String()
 
 	// Setup process to kill listener on demand
-	n.proc.Go(func (p goprocess.Process) {
+	n.proc.Go(func(p goprocess.Process) {
 		select {
-		case <- p.Closing():
+		case <-p.Closing():
 			// cause listener.Accept to stop blocking so it can breakout the loop
 			log.Info("close listener")
 			listener.Close()
-		}	
+		}
 	})
 
 	// Run listenr process
-	n.proc.Go(func (p goprocess.Process) {
+	n.proc.Go(func(p goprocess.Process) {
 		// TODO: add addr info
 		log.Info("Loop for incoming connections")
 		for {
@@ -163,7 +162,7 @@ func (n *Network) startListening() error {
 			} else {
 				// if we're about to shutdown, no need to continue with the loop
 				select {
-				case <- p.Closing():
+				case <-p.Closing():
 					log.Info("Shutting down server")
 					return
 				default:
@@ -181,35 +180,35 @@ func (n *Network) bootstrap(p goprocess.Process) {
 	for _, node := range n.BootstrapNodes {
 		// Check if we're asked to shutdown
 		select {
-		case <- p.Closing():
+		case <-p.Closing():
 			return
 		default:
 			log.Info("connect to ", node)
 		}
-		
+
 		// Parse peer address to get IP
 		peer, err := dht.ParsePeerAddr(node)
 		if err != nil {
 			log.Error(err)
 			continue
 		}
-		
+
 		// Reuse connection if it's already connected
 		conn, _ := n.host.Connection(peer.ID)
 		if conn != nil {
 			log.Info("reuse connection??")
 			continue
 		}
-	
+
 		// Connect to peer node
-		go func () {
+		go func() {
 			_, err := n.host.Connect(peer.Address)
 			if err != nil {
 				log.WithFields(logrus.Fields{
 					"address": peer.Address,
 					"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
 				}).Error("failed to connect boost node")
-				return	
+				return
 			}
 
 			// TODO: optimize
@@ -217,11 +216,9 @@ func (n *Network) bootstrap(p goprocess.Process) {
 				"address": peer.Address,
 				"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
 			}).Info("success to connect boost node")
-
 		}()
 	}
 }
-
 
 // Sign signs a message
 // TODO: move to another package??
