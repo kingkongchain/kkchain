@@ -4,17 +4,16 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"math/rand"
-	"time"
 	"sync"
-
-	"encoding/json"
+	"time"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/glog"
-	"github.com/sirupsen/logrus"
 	"github.com/invin/kkchain/p2p"
+	"github.com/sirupsen/logrus"
 )
 
 const (
@@ -29,7 +28,7 @@ const (
 )
 
 var (
-	log 					   = logrus.New()
+	log = logrus.New()
 )
 
 type DHTConfig struct {
@@ -74,7 +73,6 @@ func DefaultConfig() *DHTConfig {
 	}
 }
 
-
 // New creates a new DHT object with the given peer as as the 'local' host
 func New(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
 
@@ -87,11 +85,11 @@ func New(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
 	self := CreateID(host.ID().Address, host.ID().PublicKey)
 
 	dht := &DHT{
-		quitCh: make(chan bool),
-		config: config,
-		self:   self,
-		table:  CreateRoutingTable(self),
-		store:  db,
+		quitCh:   make(chan bool),
+		config:   config,
+		self:     self,
+		table:    CreateRoutingTable(self),
+		store:    db,
 		pingpong: newPingPongService(),
 	}
 
@@ -167,7 +165,6 @@ func (dht *DHT) Start() {
 	fmt.Println("start sync loop.....")
 	go dht.syncLoop()
 	go dht.checkPingPong()
-	// go dht.waitReceive()
 }
 
 func (dht *DHT) Stop() {
@@ -233,10 +230,10 @@ func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		
+
 		// FIXME: delay FIND_NODE to next round
 		return
-	} 
+	}
 
 	// TODO: send messages after handshaking
 	//send find neighbours request to peer
