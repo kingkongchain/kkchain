@@ -7,7 +7,6 @@ import (
 	"net"
 	"sync"
 
-	"fmt"
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
 	"github.com/invin/kkchain/p2p"
