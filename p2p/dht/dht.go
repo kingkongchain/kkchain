@@ -75,7 +75,6 @@ func DefaultConfig() *DHTConfig {
 
 // New creates a new DHT object with the given peer as as the 'local' host
 func New(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
-
 	// If no node database was given, use an in-memory one
 	db, err := newPeerStore(config.RoutingTableDir)
 	if err != nil {
