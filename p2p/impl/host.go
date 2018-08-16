@@ -1,15 +1,16 @@
 package impl
 
 import (
-	"github.com/sirupsen/logrus"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 
 	"net"
 
-	"github.com/invin/kkchain/p2p"
-	"github.com/invin/kkchain/p2p/handshake"
-	"github.com/invin/kkchain/p2p/dht"
 	"github.com/gogo/protobuf/proto"
+	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/p2p/dht"
+	"github.com/invin/kkchain/p2p/handshake"
 )
 
 // Host defines a host for connections
@@ -31,7 +32,7 @@ type Host struct {
 	// notifier mux
 	notifyMux sync.Mutex
 
-	// network 
+	// network
 	n p2p.Network
 }
 
@@ -42,7 +43,7 @@ func NewHost(id p2p.ID, n p2p.Network) *Host {
 		cMap: make(map[string]p2p.Conn),
 		hMap: make(map[string]p2p.MessageHandler),
 		nMap: make(map[p2p.Notifiee]struct{}),
-		n: n,
+		n:    n,
 	}
 }
 
@@ -82,7 +83,7 @@ func (h *Host) Revoke(n p2p.Notifiee) error {
 // h.notifyAll(func(n p2p.Notifiee) {
 // 	n.Connected(newConn)
 // })
-func (h *Host) NotifyAll(notification func(n p2p.Notifiee)) {
+func (h *Host) notifyAll(notification func(n p2p.Notifiee)) {
 	h.notifyMux.Lock()
 	defer h.notifyMux.Unlock()
 
@@ -104,7 +105,7 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 		"direction": dir,
 	}).Info("A connection is created")
 	// Loop to handle messages
-	go func () {
+	go func() {
 		defer c.Close()
 		// handeshake
 		hs := handshake.New(h)
@@ -196,7 +197,7 @@ func (h *Host) Connection(id p2p.ID) (p2p.Conn, error) {
 	return conn, nil
 }
 
-// GetAllConnection gets all the connections 
+// GetAllConnection gets all the connections
 func (h *Host) GetAllConnection() map[string]p2p.Conn {
 	h.mux.Lock()
 	defer h.mux.Unlock()
@@ -228,7 +229,7 @@ func (h *Host) RemoveConnection(id p2p.ID) error {
 	return nil
 }
 
-// RemoveAllConnection removes all the connection when shutdown 
+// RemoveAllConnection removes all the connection when shutdown
 func (h *Host) RemoveAllConnection() {
 	h.mux.Lock()
 	defer h.mux.Unlock()
@@ -264,7 +265,7 @@ func (h *Host) Connect(address string) (p2p.Conn, error) {
 	return c, nil
 }
 
-// SetMessageHandler sets handler for handling messages 
+// SetMessageHandler sets handler for handling messages
 func (h *Host) SetMessageHandler(protocol string, handler p2p.MessageHandler) error {
 	h.mux.Lock()
 	defer h.mux.Unlock()

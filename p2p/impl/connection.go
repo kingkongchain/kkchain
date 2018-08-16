@@ -1,12 +1,13 @@
 package impl
 
 import (
-	"github.com/sirupsen/logrus"
 	"bufio"
 	"encoding/binary"
 	"io"
 	"net"
 	"sync"
+
+	"github.com/sirupsen/logrus"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
@@ -18,25 +19,25 @@ import (
 
 var (
 	errEmptyMessage = errors.New("empty message")
-	errVerifySign	= errors.New("invalid signature")
+	errVerifySign   = errors.New("invalid signature")
 )
 
 // Connection represents a connection to remote peer
 type Connection struct {
-	conn       	net.Conn
-	n          	p2p.Network
-	h          	p2p.Host
-	mux        	sync.Mutex
-	remotePeer 	p2p.ID
-	verified   	bool
+	conn       net.Conn
+	n          p2p.Network
+	h          p2p.Host
+	mux        sync.Mutex
+	remotePeer p2p.ID
+	verified   bool
 }
 
 // NewConnection creates a new connection object
 func NewConnection(conn net.Conn, n p2p.Network, h p2p.Host) *Connection {
 	return &Connection{
-		conn: conn,
-		n:    n,
-		h:    h,
+		conn:     conn,
+		n:        n,
+		h:        h,
 		verified: false,
 	}
 }
@@ -65,7 +66,7 @@ func (c *Connection) LocalAddr() net.Addr {
 func (c *Connection) Close() error {
 
 	// notify disconn
-	c.h.NotifyAll(func(n p2p.Notifiee) {
+	c.h.notifyAll(func(n p2p.Notifiee) {
 		n.Disconnected(c)
 	})
 	return c.conn.Close()
@@ -90,7 +91,7 @@ func (c *Connection) WriteMessage(message proto.Message, protocol string) error 
 
 	log.WithFields(logrus.Fields{
 		"protocol": protocol,
-		"msg": message,
+		"msg":      message,
 	}).Info("Send message")
 
 	return c.write(c.conn, signed, &c.mux)
@@ -248,9 +249,8 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 
 	log.WithFields(logrus.Fields{
 		"protocol": msg.Protocol,
-		"msg": ptr.Message,
+		"msg":      ptr.Message,
 	}).Info("Received a message")
 
 	return ptr.Message, msg.Protocol, nil
 }
-

@@ -46,6 +46,7 @@ func (dht *DHT) handleFindPeer(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 	// setup response
 	resp := NewMessage(Message_FIND_NODE_RESULT, "")
 
+	fmt.Printf("target: %s\n", pmes.Key)
 	target, err := hex.DecodeString(pmes.Key)
 	if err != nil {
 		return nil, err
