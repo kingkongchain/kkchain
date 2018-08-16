@@ -7,14 +7,12 @@ import (
 	"net"
 	"sync"
 
-	"github.com/sirupsen/logrus"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
-	"github.com/golang/glog"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/protobuf"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -154,7 +152,7 @@ func (c *Connection) write(w io.Writer, message *protobuf.Message, writerMutex *
 	for totalBytesWritten < len(buffer) && err == nil {
 		bytesWritten, err = w.Write(buffer[totalBytesWritten:])
 		if err != nil {
-			glog.Errorf("stream: failed to write entire buffer, err: %+v\n", err)
+			log.Errorf("stream: failed to write entire buffer, err: %+v\n", err)
 		}
 		totalBytesWritten += bytesWritten
 	}
