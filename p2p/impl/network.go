@@ -89,6 +89,7 @@ func (n *Network) Start() error {
 		case <-p.Closing():
 			log.Info("closing dht")
 			n.dht.Stop()
+			n.host.RemoveAllConnection()
 		}
 	})
 
