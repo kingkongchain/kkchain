@@ -68,6 +68,10 @@ func (n *Network) GetConnChan() *chan p2p.Conn {
 	return &n.connChan
 }
 
+func (n *Network) GetConnChan() *chan p2p.Conn {
+	return &n.connChan
+}
+
 // Start kicks off the p2p stack
 func (n *Network) Start() error {
 	// TODO: use singleton mode
