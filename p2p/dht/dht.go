@@ -376,7 +376,6 @@ func (dht *DHT) ping(c p2p.Conn) {
 			dht.pingpong.pingpongAt[peer] = time.Now()
 		}
 	}
-
 }
 
 func (dht *DHT) checkPingPong() {
