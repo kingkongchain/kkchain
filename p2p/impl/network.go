@@ -224,6 +224,44 @@ func (n *Network) bootstrap(p goprocess.Process) {
 				"address": peer.Address,
 				"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
 			}).Info("success to connect boost node")
+	for {
+		var (
+			fd  net.Conn
+			err error
+		)
+
+		fd, err = listener.Accept()
+		if err != nil {
+			log.Error("failed to listen:", err)
+			break
+		}
+		fmt.Println("listener accepted...")
+		conn := NewConnection(fd, n, n.host)
+		if conn == nil {
+			log.Error(failedNewConnection)
+			continue
+		}
+
+		n.connChan <- conn
+	}
+}
+
+func (n *Network) RecvMessage() {
+	defer n.loopWG.Done()
+	select {
+	case conn := <-n.connChan:
+		go func() {
+			for {
+				msg, err := conn.ReadMessage()
+				if err != nil {
+					continue
+				}
+				fmt.Println("\n接受的消息：", msg.Sender, msg.Message.TypeUrl, "\n")
+				err = n.dispatchMessage(conn, msg)
+				if err != nil {
+					continue
+				}
+			}
 		}()
 	return nil
 }

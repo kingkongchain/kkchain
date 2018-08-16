@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/invin/kkchain/p2p"
+	"fmt"
 )
 
 // dhthandler specifies the signature of functions that handle DHT messages.
