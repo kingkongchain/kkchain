@@ -177,7 +177,7 @@ func (dht *DHT) syncLoop() {
 	dht.table.printTable()
 
 	//first sync
-	dht.SyncRouteTable()
+	//dht.SyncRouteTable()
 
 	//TODO: config timer
 	syncLoopTicker := time.NewTicker(DefaultSyncTableInterval)
@@ -217,7 +217,7 @@ func (dht *DHT) RemovePeer(peer PeerID) {
 
 //FindTargetNeighbours searches target's neighbours from given PeerID
 func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
-
+	fmt.Printf("FindTargetNeighbours from %s, target: %s\n", peer, hex.EncodeToString(target))
 	if peer.Equals(dht.self) {
 		return
 	}
