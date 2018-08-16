@@ -217,7 +217,7 @@ func (n *Network) bootstrap(p goprocess.Process) {
 				"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
 			}).Info("success to connect boost node")
 		}()
-	}
+	return nil
 }
 
 // Sign signs a message
