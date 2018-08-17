@@ -248,6 +248,21 @@ func (n *Network) bootstrap(p goprocess.Process) {
 
 func (n *Network) RecvMessage() {
 	defer n.loopWG.Done()
+	for {
+		select {
+		case conn := <-n.connChan:
+			go func() {
+				for {
+					msg, err := conn.ReadMessage()
+					if err != nil {
+						continue
+					}
+					fmt.Println("\n接受的消息：", msg.Sender, msg.Message.TypeUrl, "\n")
+					err = n.dispatchMessage(conn, msg)
+					if err != nil {
+						continue
+					}
+				}
 	select {
 	case conn := <-n.connChan:
 		go func() {
