@@ -4,7 +4,10 @@ import (
 	"context"
 	"encoding/hex"
 
+	"time"
+
 	"github.com/invin/kkchain/p2p"
+	"fmt"
 )
 
 // dhthandler specifies the signature of functions that handle DHT messages.
@@ -40,6 +43,7 @@ func (dht *DHT) handlePutValue(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 }
 
 func (dht *DHT) handleFindPeer(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
+	fmt.Println("handleFindPeer...")
 	// setup response
 	resp := NewMessage(Message_FIND_NODE_RESULT, "")
 
@@ -59,8 +63,8 @@ func (dht *DHT) handleFindPeer(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 }
 
 func (dht *DHT) handleFindPeerResult(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-
 	pbPeers := pmes.CloserPeers
+	fmt.Printf("handleFindPeerResult %d\n", len(pbPeers))
 	for _, p := range pbPeers {
 		peer := PBPeerToPeerID(*p)
 		dht.table.Update(*peer)
@@ -78,5 +82,6 @@ func (dht *DHT) handlePing(ctx context.Context, p p2p.ID, pmes *Message) (_ *Mes
 
 func (dht *DHT) handlePong(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
 	// TODO: update connection status
+	dht.pingpong.pingpongAt[CreateID(p.Address, p.PublicKey).HashHex()] = time.Now()
 	return nil, nil
 }

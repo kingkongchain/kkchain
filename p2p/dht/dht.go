@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math/rand"
 	"time"
+	"sync"
 
 	"encoding/json"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/glog"
+	"github.com/sirupsen/logrus"
 	"github.com/invin/kkchain/p2p"
 )
 
@@ -26,9 +28,28 @@ const (
 	DefaultMaxPeersCountToSync = 6
 )
 
+var (
+	log 					   = logrus.New()
+)
+
 type DHTConfig struct {
 	BucketSize      int
 	RoutingTableDir string
+}
+
+type PingPongService struct {
+	mutex      *sync.RWMutex
+	stopCh     map[string]chan interface{}
+	pingpongAt map[string]time.Time
+}
+
+func newPingPongService() *PingPongService {
+	time.Now()
+	return &PingPongService{
+		mutex:      &sync.RWMutex{},
+		stopCh:     make(map[string]chan interface{}),
+		pingpongAt: make(map[string]time.Time),
+	}
 }
 
 // DHT implements a Distributed Hash Table for p2p
@@ -43,7 +64,7 @@ type DHT struct {
 	config         *DHTConfig
 	self           PeerID
 	BootstrapNodes []string
-	recvCh         chan interface{}
+	pingpong       *PingPongService
 }
 
 func DefaultConfig() *DHTConfig {
@@ -53,12 +74,9 @@ func DefaultConfig() *DHTConfig {
 	}
 }
 
-func (dht *DHT) GetRecvchan() chan interface{} {
-	return dht.recvCh
-}
 
-// NewDHT creates a new DHT object with the given peer as as the 'local' host
-func NewDHT(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
+// New creates a new DHT object with the given peer as as the 'local' host
+func New(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
 
 	// If no node database was given, use an in-memory one
 	db, err := newPeerStore(config.RoutingTableDir)
@@ -74,41 +92,45 @@ func NewDHT(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
 		self:   self,
 		table:  CreateRoutingTable(self),
 		store:  db,
-		recvCh: make(chan interface{}),
+		pingpong: newPingPongService(),
 	}
 
 	dht.host = host
 	dht.network = network
 
-	if err := dht.host.SetStreamHandler(protocolDHT, dht.handleNewStream); err != nil {
+	if err := dht.host.SetMessageHandler(protocolDHT, dht.handleMessage); err != nil {
 		panic(err)
 	}
+
+	// Register to get notification
+	host.Register(dht)
 
 	return dht
 }
 
+// Self returns self info
 func (dht *DHT) Self() PeerID {
 	return dht.self
 }
 
-// handleNewStream handles messages within the stream
-func (dht *DHT) handleNewStream(s p2p.Stream, msg proto.Message) {
+// handleMessage handles messages within the stream
+func (dht *DHT) handleMessage(c p2p.Conn, msg proto.Message) {
 	// check message type
 	switch message := msg.(type) {
 	case *Message:
-		go dht.handleMessage(s, message)
+		go dht.doHandleMessage(c, message)
 	default:
-		s.Reset()
+		c.Close()
 		glog.Errorf("unexpected message: %v", msg)
 	}
 }
 
-// handleMessage handles messsage
-func (dht *DHT) handleMessage(s p2p.Stream, msg *Message) {
+// doHandleMessage handles messsage
+func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 	// get handler
 	handler := dht.handlerForMsgType(msg.GetType())
 	if handler == nil {
-		s.Reset()
+		c.Close()
 		glog.Errorf("unknown message type: %v", msg.GetType())
 		return
 	}
@@ -116,7 +138,7 @@ func (dht *DHT) handleMessage(s p2p.Stream, msg *Message) {
 	// dispatch handler
 	// TODO: get context and peer id
 	ctx := context.Background()
-	pid := s.RemotePeer()
+	pid := c.RemotePeer()
 
 	rpmes, err := handler(ctx, pid, msg)
 
@@ -127,11 +149,13 @@ func (dht *DHT) handleMessage(s p2p.Stream, msg *Message) {
 	}
 
 	// send out response msg
-	if err = s.Write(rpmes); err != nil {
-		s.Reset()
+	if err = c.WriteMessage(rpmes, protocolDHT); err != nil {
+		c.Close()
 		glog.Errorf("send response error: %s", err)
 		return
 	}
+
+	fmt.Printf("dht handle %d success and send resp to: %s, conn: %v", msg.Type, pid, c)
 }
 
 func (dht *DHT) Start() {
@@ -142,7 +166,8 @@ func (dht *DHT) Start() {
 
 	fmt.Println("start sync loop.....")
 	go dht.syncLoop()
-	go dht.waitReceive()
+	go dht.checkPingPong()
+	// go dht.waitReceive()
 }
 
 func (dht *DHT) Stop() {
@@ -179,20 +204,6 @@ func (dht *DHT) syncLoop() {
 	}
 }
 
-func (dht *DHT) waitReceive() {
-	for {
-		select {
-		case msg := <-dht.recvCh:
-			switch msg.(type) {
-			case p2p.ID:
-				id := msg.(p2p.ID)
-				peerID := CreateID(id.Address, id.PublicKey)
-				dht.AddPeer(peerID)
-			}
-		}
-	}
-}
-
 func (dht *DHT) AddPeer(peer PeerID) {
 
 	//dht.store.Update(&peer)
@@ -215,26 +226,24 @@ func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
 		return
 	}
 
-	conn, err := dht.host.GetConnection(peer.ID)
+	conn, err := dht.host.Connection(peer.ID)
 	//TODO: dial remote peer???
-	if conn == nil {
-		fd, err := dht.host.Connect(peer.ID.Address)
+	if err != nil {
+		conn, err = dht.host.Connect(peer.ID.Address)
 		if err != nil {
-			return
+			fmt.Println(err)
 		}
-		conn, err = dht.network.CreateConnection(fd)
-		if err != nil {
-			return
-		}
-	}
+		
+		// FIXME: delay FIND_NODE to next round
+		return
+	} 
 
+	// TODO: send messages after handshaking
 	//send find neighbours request to peer
 	pmes := NewMessage(Message_FIND_NODE, hex.EncodeToString(target))
-	stream, err := dht.network.CreateStream(conn, protocolDHT)
-	if err != nil {
-		return
+	if err = conn.WriteMessage(pmes, protocolDHT); err != nil {
+		fmt.Print(err)
 	}
-	stream.Write(pmes)
 }
 
 // RandomTargetID generate random peer id for query target
@@ -259,6 +268,7 @@ func (dht *DHT) SyncRouteTable() {
 	for _, addr := range dht.network.Bootstraps() {
 		pid, err := ParsePeerAddr(addr)
 		if err != nil {
+			log.Info("connect with error ", err)
 			continue
 		}
 
@@ -269,6 +279,8 @@ func (dht *DHT) SyncRouteTable() {
 	// random peer selection.
 	peers := dht.table.GetPeers()
 	peersCount := len(peers)
+	fmt.Printf("peersCount=%d\n", peersCount)
+
 	if peersCount <= 1 {
 		return
 	}
@@ -320,4 +332,72 @@ func (dht *DHT) loadTableFromDB() {
 		dht.table.Update(*peer)
 	}
 
+}
+
+// Connected is called when new connection is established
+func (dht *DHT) Connected(c p2p.Conn) {
+	fmt.Println("在dht中获取通知：connected")
+	id := c.RemotePeer()
+	peerID := CreateID(id.Address, id.PublicKey)
+	dht.AddPeer(peerID)
+	go dht.ping(c)
+}
+
+// Disconnected is called when the connection is closed
+func (dht *DHT) Disconnected(c p2p.Conn) {
+	fmt.Println("disconnect")
+}
+
+func (dht *DHT) ping(c p2p.Conn) {
+
+	pingTicker := time.NewTicker(10 * time.Second)
+	defer pingTicker.Stop()
+
+	stop := make(chan interface{})
+	dht.pingpong.mutex.Lock()
+	peer := CreateID(c.RemotePeer().Address, c.RemotePeer().PublicKey).HashHex()
+	if dht.pingpong.stopCh[peer] == nil {
+		dht.pingpong.stopCh[peer] = stop
+	} else {
+		dht.pingpong.mutex.Unlock()
+		return
+	}
+	dht.pingpong.mutex.Unlock()
+	for {
+		select {
+		case <-stop:
+			delete(dht.pingpong.stopCh, peer)
+			return
+		case <-pingTicker.C:
+			fmt.Printf("sending ping to %s\n", c.RemotePeer().Address)
+			pmes := NewMessage(Message_PING, "")
+			if err := c.WriteMessage(pmes, protocolDHT); err != nil {
+				dht.pingpong.stopCh[peer] = nil
+				delete(dht.pingpong.stopCh, peer)
+				return
+			}
+			dht.pingpong.pingpongAt[peer] = time.Now()
+		}
+	}
+
+}
+
+func (dht *DHT) checkPingPong() {
+	checkTicker := time.NewTicker(30 * time.Second)
+	defer checkTicker.Stop()
+
+	for {
+		select {
+		case <-checkTicker.C:
+			for p, t := range dht.pingpong.pingpongAt {
+				if time.Now().Sub(t) > 60*time.Second {
+					dht.pingpong.stopCh[p] <- new(interface{})
+					hash, _ := hex.DecodeString(p)
+					peer := PeerID{Hash: hash}
+					dht.RemovePeer(peer)
+				}
+			}
+
+		}
+	}
 }
