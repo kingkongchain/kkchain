@@ -10,8 +10,6 @@ import (
 
 	"encoding/json"
 
-	"sync"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/golang/glog"
 	"github.com/invin/kkchain/p2p"
@@ -31,21 +29,6 @@ const (
 type DHTConfig struct {
 	BucketSize      int
 	RoutingTableDir string
-}
-
-type PingPongService struct {
-	mutex      *sync.RWMutex
-	stopCh     map[string]chan interface{}
-	pingpongAt map[string]time.Time
-}
-
-func newPingPongService() *PingPongService {
-	time.Now()
-	return &PingPongService{
-		mutex:      &sync.RWMutex{},
-		stopCh:     make(map[string]chan interface{}),
-		pingpongAt: make(map[string]time.Time),
-	}
 }
 
 // DHT implements a Distributed Hash Table for p2p
@@ -148,7 +131,7 @@ func (dht *DHT) handleMessage(s p2p.Stream, msg *Message) {
 		return
 	}
 
-	fmt.Printf("dht handle %d success and send resp to: %s, protocol: %s, conn: %v", msg.Type, pid, s.Protocol(), s.Conn())
+	//fmt.Printf("dht handle %d success and send resp to: %s, protocol: %s, conn: %v\n", msg.Type, pid, s.Protocol(), s.Conn())
 }
 
 func (dht *DHT) Start() {
@@ -201,6 +184,10 @@ func (dht *DHT) AddPeer(peer PeerID) {
 	//dht.store.Update(&peer)
 	peer.addTime = time.Now()
 	dht.table.Update(peer)
+	//TODO: limit number of goroutine
+	if !peer.Equals(dht.self) && dht.pingpong.GetStopCh(peer.HashHex()) == nil {
+		go dht.ping(peer)
+	}
 
 }
 
@@ -208,7 +195,6 @@ func (dht *DHT) RemovePeer(peer PeerID) {
 
 	dht.store.Delete(&peer)
 	dht.table.RemovePeer(peer)
-
 }
 
 //FindTargetNeighbours searches target's neighbours from given PeerID
@@ -273,7 +259,6 @@ func (dht *DHT) SyncRouteTable() {
 	// random peer selection.
 	peers := dht.table.GetPeers()
 	peersCount := len(peers)
-	fmt.Printf("peersCount=%d\n", peersCount)
 	if peersCount <= 1 {
 		return
 	}
@@ -329,11 +314,13 @@ func (dht *DHT) loadTableFromDB() {
 
 // Connected is called when new connection is established
 func (dht *DHT) Connected(c p2p.Conn) {
-	fmt.Println("在dht中获取通知：connected")
+	fmt.Printf("在dht中获取通知：connected, %s\n", c.RemotePeer())
+	if c.RemotePeer().Address == "" || c.RemotePeer().PublicKey == nil {
+		return
+	}
 	id := c.RemotePeer()
 	peerID := CreateID(id.Address, id.PublicKey)
 	dht.AddPeer(peerID)
-	go dht.ping(c)
 }
 
 // Disconnected is called when the connection is closed
@@ -351,48 +338,39 @@ func (dht *DHT) ClosedStream(s p2p.Stream) {
 
 }
 
-func (dht *DHT) ping(c p2p.Conn) {
+func (dht *DHT) ping(p PeerID) {
 
 	pingTicker := time.NewTicker(10 * time.Second)
 	defer pingTicker.Stop()
 
+	peer := p.HashHex()
 	stop := make(chan interface{})
-	dht.pingpong.mutex.Lock()
-	peer := CreateID(c.RemotePeer().Address, c.RemotePeer().PublicKey).HashHex()
-	if dht.pingpong.stopCh[peer] == nil {
-		dht.pingpong.stopCh[peer] = stop
-	} else {
-		dht.pingpong.mutex.Unlock()
+	if dht.pingpong.PutStopChIfAbsent(peer, stop) != nil {
 		return
 	}
-	dht.pingpong.mutex.Unlock()
+
 	for {
 		select {
 		case <-stop:
-			delete(dht.pingpong.stopCh, peer)
+			dht.pingpong.DeleteStopCh(peer)
 			return
 		case <-pingTicker.C:
-			fmt.Printf("sending ping to %s\n", c.RemotePeer().Address)
+			fmt.Printf("sending ping to %s\n", p.Address)
 			pmes := NewMessage(Message_PING, "")
-			stream, err := dht.network.CreateStream(c, protocolDHT)
-			if err != nil {
-				delete(dht.pingpong.stopCh, peer)
-				return
+
+			conn, err := dht.sendMessage(p, pmes)
+			if conn != nil {
+				if err == nil {
+					dht.pingpong.PutPingPongAt(peer, time.Now())
+				}
 			}
-			err = stream.Write(pmes)
-			if err != nil {
-				dht.pingpong.stopCh[peer] = nil
-				delete(dht.pingpong.stopCh, peer)
-				return
-			}
-			dht.pingpong.pingpongAt[peer] = time.Now()
 		}
 	}
 
 }
 
 func (dht *DHT) checkPingPong() {
-	checkTicker := time.NewTicker(30 * time.Second)
+	checkTicker := time.NewTicker(10 * time.Second)
 	defer checkTicker.Stop()
 
 	for {
@@ -400,13 +378,28 @@ func (dht *DHT) checkPingPong() {
 		case <-checkTicker.C:
 			for p, t := range dht.pingpong.pingpongAt {
 				if time.Now().Sub(t) > 60*time.Second {
-					dht.pingpong.stopCh[p] <- new(interface{})
 					hash, _ := hex.DecodeString(p)
 					peer := PeerID{Hash: hash}
 					dht.RemovePeer(peer)
+					dht.pingpong.GetStopCh(p) <- new(interface{})
+					dht.pingpong.DeletePingPongAt(p)
 				}
 			}
-
 		}
 	}
+}
+
+func (dht *DHT) sendMessage(p PeerID, msg *Message) (p2p.Conn, error) {
+	conn, err := dht.host.GetConnection(p.ID)
+	if conn == nil {
+		return conn, nil
+	}
+
+	stream, err := dht.network.CreateStream(conn, protocolDHT)
+	if err != nil {
+		return conn, err
+	}
+
+	err = stream.Write(msg)
+	return conn, err
 }
