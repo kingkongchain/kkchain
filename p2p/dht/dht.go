@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 
 	"github.com/gogo/protobuf/proto"
@@ -332,7 +331,7 @@ func (dht *DHT) Disconnected(c p2p.Conn) {
 	fmt.Println("disconnect")
 }
 
-func (dht *DHT) ping(c p2p.Conn) {
+func (dht *DHT) ping(p PeerID) {
 
 	pingTicker := time.NewTicker(10 * time.Second)
 	defer pingTicker.Stop()
@@ -359,7 +358,6 @@ func (dht *DHT) ping(c p2p.Conn) {
 				}
 			}
 		}
-		}
 	}
 }
 
@@ -384,16 +382,14 @@ func (dht *DHT) checkPingPong() {
 }
 
 func (dht *DHT) sendMessage(p PeerID, msg *Message) (p2p.Conn, error) {
-	conn, err := dht.host.GetConnection(p.ID)
+	conn, err := dht.host.Connection(p.ID)
 	if conn == nil {
 		return conn, nil
 	}
 
-	stream, err := dht.network.CreateStream(conn, protocolDHT)
-	if err != nil {
+	if err = conn.WriteMessage(msg, protocolDHT); err != nil {
 		return conn, err
 	}
 
-	err = stream.Write(msg)
 	return conn, err
 }
