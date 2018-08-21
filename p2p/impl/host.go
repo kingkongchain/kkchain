@@ -3,10 +3,14 @@ package impl
 import (
 	"sync"
 
+	"github.com/sirupsen/logrus"
+
 	"net"
 
+	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/dht"
+	"github.com/invin/kkchain/p2p/handshake"
 )
 
 // Host defines a host for connections
@@ -16,8 +20,8 @@ type Host struct {
 	// connection map
 	cMap map[string]p2p.Conn
 
-	// stream handler map
-	sMap map[string]p2p.StreamHandler
+	// message handler map
+	hMap map[string]p2p.MessageHandler
 
 	// mutex to sync access
 	mux sync.Mutex
@@ -27,15 +31,19 @@ type Host struct {
 
 	// notifier mux
 	notifyMux sync.Mutex
+
+	// network
+	n p2p.Network
 }
 
 // NewHost creates a new host object
-func NewHost(id p2p.ID) *Host {
+func NewHost(id p2p.ID, n p2p.Network) *Host {
 	return &Host{
 		id:   id,
 		cMap: make(map[string]p2p.Conn),
-		sMap: make(map[string]p2p.StreamHandler),
+		hMap: make(map[string]p2p.MessageHandler),
 		nMap: make(map[p2p.Notifiee]struct{}),
+		n:    n,
 	}
 }
 
@@ -91,6 +99,67 @@ func (h *Host) NotifyAll(notification func(n p2p.Notifiee)) {
 	wg.Wait()
 }
 
+// OnConnectionCreated is called when new connection is available
+func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
+	log.WithFields(logrus.Fields{
+		"direction": dir,
+	}).Info("A connection is created")
+	// Loop to handle messages
+	go func() {
+		defer c.Close()
+		// handeshake
+		hs := handshake.New(h)
+		if err := hs.Handshake(c, dir); err != nil {
+			log.Error(err)
+			return
+		}
+
+		pid := c.RemotePeer()
+		if err := h.AddConnection(pid, c); err != nil {
+			log.Error(err)
+			return
+		}
+
+		log.WithFields(logrus.Fields{
+			"peerID": pid,
+		}).Info("Loop to handle messages")
+		// handle other messages
+		for {
+			msg, protocol, err := c.ReadMessage()
+			if err != nil {
+				if err != errEmptyMessage {
+					log.Error(err)
+				}
+				break
+			}
+
+			err = h.dispatchMessage(c, msg, protocol)
+			if err != nil {
+				log.Error(err)
+				break
+			}
+		}
+
+		h.RemoveConnection(pid)
+
+		log.Debug("break loop for connection")
+	}()
+}
+
+// dispatch message according to protocol
+func (h *Host) dispatchMessage(conn p2p.Conn, msg proto.Message, protocol string) error {
+	// get stream handler
+	handler, err := h.MessageHandler(protocol)
+	if err != nil {
+		return err
+	}
+
+	// handle message
+	handler(conn, msg)
+
+	return nil
+}
+
 // AddConnection a connection
 func (h *Host) AddConnection(id p2p.ID, conn p2p.Conn) error {
 	h.mux.Lock()
@@ -104,11 +173,17 @@ func (h *Host) AddConnection(id p2p.ID, conn p2p.Conn) error {
 	}
 
 	h.cMap[pk] = conn
+
+	// notify a new connection
+	h.notifyAll(func(n p2p.Notifiee) {
+		n.Connected(conn)
+	})
+
 	return nil
 }
 
-// GetConnection get a connection with ID
-func (h *Host) GetConnection(id p2p.ID) (p2p.Conn, error) {
+// Connection get a connection with ID
+func (h *Host) Connection(id p2p.ID) (p2p.Conn, error) {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
@@ -122,10 +197,12 @@ func (h *Host) GetConnection(id p2p.ID) (p2p.Conn, error) {
 	return conn, nil
 }
 
+// GetAllConnection gets all the connections
 func (h *Host) GetAllConnection() map[string]p2p.Conn {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
+	// FIXME: return map directly?
 	return h.cMap
 }
 
@@ -140,17 +217,25 @@ func (h *Host) RemoveConnection(id p2p.ID) error {
 	if !ok {
 		return errConnectionNotFound
 	}
+
 	conn.Close()
 	delete(h.cMap, pk)
+
+	// Notify subscribers that connection is removed from host
+	h.notifyAll(func(n p2p.Notifiee) {
+		n.Disconnected(conn)
+	})
 
 	return nil
 }
 
+// RemoveAllConnection removes all the connection when shutdown
 func (h *Host) RemoveAllConnection() {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
 	for id, conn := range h.cMap {
+		// Close connection to reclaim go routines for each connection
 		conn.Close()
 		delete(h.cMap, id)
 	}
@@ -162,39 +247,44 @@ func (h *Host) ID() p2p.ID {
 }
 
 // Connect connects to remote peer
-func (h *Host) Connect(address string) (net.Conn, error) {
+func (h *Host) Connect(address string) (p2p.Conn, error) {
 	addr, err := dht.ToNetAddr(address)
 	if err != nil {
 		return nil, err
 	}
 
-	fd, err := net.Dial(addr.Network(), addr.String())
+	// Dial remote peer
+	conn, err := net.Dial(addr.Network(), addr.String())
 	if err != nil {
 		return nil, err
 	}
-	return fd, nil
+
+	c := NewConnection(conn, h.n, h)
+
+	h.OnConnectionCreated(c, p2p.Outbound)
+	return c, nil
 }
 
-// SetStreamHandler sets handler for some a stream
-func (h *Host) SetStreamHandler(protocol string, handler p2p.StreamHandler) error {
+// SetMessageHandler sets handler for handling messages
+func (h *Host) SetMessageHandler(protocol string, handler p2p.MessageHandler) error {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	_, found := h.sMap[protocol]
+	_, found := h.hMap[protocol]
 	if found {
 		return errDuplicateStream
 	}
 
-	h.sMap[protocol] = handler
+	h.hMap[protocol] = handler
 	return nil
 }
 
-// GetStreamHandler get stream handler
-func (h *Host) GetStreamHandler(protocol string) (p2p.StreamHandler, error) {
+// MessageHandler gets message handler
+func (h *Host) MessageHandler(protocol string) (p2p.MessageHandler, error) {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	handler, ok := h.sMap[protocol]
+	handler, ok := h.hMap[protocol]
 
 	if !ok {
 		return nil, errStreamNotFound

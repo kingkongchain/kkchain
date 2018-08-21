@@ -16,7 +16,7 @@ func NewMessage(typ Message_Type, key string) *Message {
 
 func PeerIDToPBPeer(p PeerID) *Message_Peer {
 
-	addrs := make([][]byte, 1)
+	addrs := make([][]byte, 0)
 	addrs = append(addrs, []byte(p.Address))
 	return &Message_Peer{Id: p.PublicKeyHex(), Addrs: addrs}
 }
