@@ -64,18 +64,6 @@ func NewNetwork(privateKeyPath, address string, conf p2p.Config) *Network {
 	return n
 }
 
-func (n *Network) GetConnChan() *chan p2p.Conn {
-	return &n.connChan
-}
-
-func (n *Network) GetConnChan() *chan p2p.Conn {
-	return &n.connChan
-}
-
-func (n *Network) GetConnChan() *chan p2p.Conn {
-	return &n.connChan
-}
-
 // Start kicks off the p2p stack
 func (n *Network) Start() error {
 	// TODO: use singleton mode
@@ -228,60 +216,8 @@ func (n *Network) bootstrap(p goprocess.Process) {
 				"address": peer.Address,
 				"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
 			}).Info("success to connect boost node")
-	for {
-		var (
-			fd  net.Conn
-			err error
-		)
-
-		fd, err = listener.Accept()
-		if err != nil {
-			log.Error("failed to listen:", err)
-			break
-		}
-		fmt.Println("listener accepted...")
-		conn := NewConnection(fd, n, n.host)
-		if conn == nil {
-			log.Error(failedNewConnection)
-			continue
-		}
-
-		n.connChan <- conn
-	}
-}
-
-func (n *Network) RecvMessage() {
-	defer n.loopWG.Done()
-	for {
-		select {
-		case conn := <-n.connChan:
-			go func() {
-				for {
-					msg, err := conn.ReadMessage()
-					if err != nil {
-						continue
-					}
-					err = n.dispatchMessage(conn, msg)
-					if err != nil {
-						continue
-					}
-				}
-	select {
-	case conn := <-n.connChan:
-		go func() {
-			for {
-				msg, err := conn.ReadMessage()
-				if err != nil {
-					continue
-				}
-				fmt.Println("\n接受的消息：", msg.Sender, msg.Message.TypeUrl, "\n")
-				err = n.dispatchMessage(conn, msg)
-				if err != nil {
-					continue
-				}
-			}
 		}()
-	return nil
+	}
 }
 
 // Sign signs a message

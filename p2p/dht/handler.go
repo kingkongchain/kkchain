@@ -6,9 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"time"
-
-	"fmt"
 	"github.com/invin/kkchain/p2p"
 )
 
