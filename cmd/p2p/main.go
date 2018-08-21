@@ -1,56 +1,48 @@
 package main
 
 import (
-	"encoding/hex"
+	"flag"
 	"fmt"
-	// "time"
+	"time"
 
+	"encoding/hex"
+
+	"github.com/invin/kkchain/crypto/blake2b"
 	"github.com/invin/kkchain/crypto/ed25519"
-	"github.com/invin/kkchain/p2p/dht"
-	// "github.com/invin/kkchain/p2p/impl"
+	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/p2p/impl"
 )
 
-func testConfig() *dht.DHTConfig {
-	return &dht.DHTConfig{
-		BucketSize:      16,
-		RoutingTableDir: "/Users/walker/Work/dht.db",
-	}
-}
-
 func main() {
-	//for i := 0; i < 10; i++ {
-	//	kp := ed25519.RandomKeyPair()
-	//	fmt.Printf("key: %v, len: %d\n", hex.EncodeToString(kp.PublicKey), len(kp.PublicKey))
-	//}
+	port := flag.String("p", "9998", "")
+	sec := flag.Int("s", 120, "")
+	keypath := flag.String("k", "", "")
+	flag.Parse()
 
-	//key, _ := p2p.GenerateKey(libcrypto.Secp256k1)
-	//pbKey, _ := key.GetPublic().Bytes()
+	config := p2p.Config{
+		SignaturePolicy: ed25519.New(),
+		HashPolicy:      blake2b.New(),
+	}
 
-	kp := ed25519.RandomKeyPair()
-	pbKey := kp.PublicKey
-	fmt.Printf("key: %v, len: %d\n", hex.EncodeToString(pbKey), len(pbKey))
+	listen := "/ip4/127.0.0.1/tcp/" + *port
 
-	pbKey, _ = hex.DecodeString("c0bc7c08b52dc1df44dcc450068171f7039ea89c6ce9c678908a4f76c5f8d2f4")
-	peerA := dht.CreateID("/ip4/127.0.0.1/tcp/8860", pbKey)
-	fmt.Printf("peer A: %s\n", peerA.String())
+	net := impl.NewNetwork(*keypath, listen, config)
+	seconds := time.Duration(*sec)
 
-	// host := impl.NewHost(peerA.ID)
+	if *port != "9998" {
+		remoteKeyPath := "node1.key"
+		pri, _ := p2p.LoadNodeKeyFromFile(remoteKeyPath)
+		pub, _ := ed25519.New().PrivateToPublic(pri)
+		node := "/ip4/127.0.0.1/tcp/9998"
+		node = hex.EncodeToString(pub) + "@" + node
+		fmt.Printf("remote peer: %s\n", node)
+		net.BootstrapNodes = []string{node}
+	}
 
-	// kad := dht.NewDHT(testConfig(), nil, host)
+	err := net.Start()
+	if err != nil {
+		fmt.Printf("failed to start server: %s\n", err)
+	}
 
-	// for i := 0; i < 1; i++ {
-	// 	//key, _ = p2p.GenerateKey(libcrypto.Secp256k1)
-	// 	//pbKey, _ = key.GetPublic().Bytes()
-	// 	kp := ed25519.RandomKeyPair()
-	// 	pbKey := kp.PublicKey
-	// 	peerB := dht.CreateID("/ip4/127.0.0.1/tcp/8861", pbKey)
-	// 	fmt.Printf("peer B: %s\n", peerB.String())
-	// 	kad.AddPeer(peerB)
-	// }
-
-	// kad.Start()
-
-	// time.Sleep(time.Duration(80 * time.Second))
-
-	// kad.Stop()
+	time.Sleep(time.Second * seconds)
 }
