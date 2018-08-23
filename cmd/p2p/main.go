@@ -13,6 +13,7 @@ import (
 	"github.com/invin/kkchain/klogging"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/impl"
+	logging "github.com/op/go-logging"
 )
 
 // init config and loggingLoger
