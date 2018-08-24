@@ -16,6 +16,27 @@ message BlockHeaderMsg {
     bytes Nonce = 11;
 }
 
+message TransactionMsg {
+
+    // account nonce
+    uint64 AccountNonce = 1;
+
+    // receiver of this tx
+    bytes Recipient = 2;
+
+    bytes Amount = 3;
+
+    // additional data with this tx
+    bytes Payload = 4;
+
+    // Signature of sender
+    bytes Signature = 5;
+
+    // hash of this tx
+    bytes Hash = 6;
+}
+
+
 message BlockMsg {
 
     // block header
@@ -29,4 +50,7 @@ message BlockMsg {
 
     // origin peer ID
     string ReceiveFrom = 4;
+
+    // txs included in this block
+    repeated TransactionMsg Transactions = 5;
 }
