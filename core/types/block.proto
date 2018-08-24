@@ -1,0 +1,32 @@
+syntax = "proto3";
+
+package types;
+
+message BlockHeaderMsg {
+    bytes ParentHash = 1;
+    bytes Miner = 2;
+    bytes StateRoot = 3;
+    bytes TxRoot = 4;
+    bytes ReceiptRoot = 5;
+    bytes Difficulty = 6;
+    bytes Number = 7;
+    bytes Time = 8;
+    bytes Extra = 9;
+    bytes MixDigest = 10;
+    bytes Nonce = 11;
+}
+
+message BlockMsg {
+
+    // block header
+    BlockHeaderMsg Header = 1;
+
+    // total difficulty until this block
+    bytes td = 2;
+
+    // receive time stamp
+    uint64 ReceiveTime = 3;
+
+    // origin peer ID
+    string ReceiveFrom = 4;
+}

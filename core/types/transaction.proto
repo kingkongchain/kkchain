@@ -1,0 +1,23 @@
+syntax = "proto3";
+
+package types;
+
+message TransactionMsg {
+
+    // account nonce
+    uint64 AccountNonce = 1;
+
+    // receiver of this tx
+    bytes Recipient = 2;
+
+    bytes Amount = 3;
+
+    // additional data with this tx
+    bytes Payload = 4;
+
+    // Signature of sender
+    bytes Signature = 5;
+
+    // hash of this tx
+    bytes Hash = 6;
+}
