@@ -2,6 +2,30 @@
 
 
 [[projects]]
+  name = "github.com/davecgh/go-spew"
+  packages = ["spew"]
+  revision = "8991bc29aa16c548c550c7ff78260e27b9ab7c73"
+  version = "v1.1.1"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/facebookgo/ensure"
+  packages = ["."]
+  revision = "b4ab57deab51ee655ae4bd85281f0715a068016d"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/facebookgo/stack"
+  packages = ["."]
+  revision = "751773369052141c013c6e827a71e8f35c07879c"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/facebookgo/subset"
+  packages = ["."]
+  revision = "8dac2c3c48703541e481feddf22975953d4ff842"
+
+[[projects]]
   name = "github.com/gogo/protobuf"
   packages = [
     "gogoproto",
@@ -33,6 +57,18 @@
 
 [[projects]]
   branch = "master"
+  name = "github.com/gxed/hashland"
+  packages = ["keccakpg"]
+  revision = "d9f6b97f8db22dd1e090fd0bbbe98f09cc7dd0a8"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/invin/gorocksdb"
+  packages = ["."]
+  revision = "925c31f2d5b5cde15e12d6bc8ef19f6821419831"
+
+[[projects]]
+  branch = "master"
   name = "github.com/jbenet/goprocess"
   packages = ["."]
   revision = "b497e2f366b8624394fb2e89c10ab607bebdde0b"
@@ -42,6 +78,18 @@
   name = "github.com/minio/blake2b-simd"
   packages = ["."]
   revision = "3f5f724cb5b182a5c278d6d3d55b40e7f8c2efb4"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/minio/sha256-simd"
+  packages = ["."]
+  revision = "ad98a36ba0da87206e3378c556abbfeaeaa98668"
+
+[[projects]]
+  branch = "master"
+  name = "github.com/mr-tron/base58"
+  packages = ["base58"]
+  revision = "f84df45a6b88974a98d1473e9f0de0eac859a3d9"
 
 [[projects]]
   name = "github.com/multiformats/go-multiaddr"
@@ -55,7 +103,11 @@
   revision = "4d4b901d1729f55ee20cc0c8d8021aa58eb5ebe3"
   version = "v1.6.2"
 
-
+[[projects]]
+  name = "github.com/multiformats/go-multihash"
+  packages = ["."]
+  revision = "8be2a682ab9f254311de1375145a2f78a809b07d"
+  version = "v1.0.8"
 
 [[projects]]
   name = "github.com/pkg/errors"
@@ -68,6 +120,12 @@
   packages = ["."]
   revision = "418b41d23a1bf978c06faea5313ba194650ac088"
   version = "v0.8.7"
+
+[[projects]]
+  name = "github.com/spaolacci/murmur3"
+  packages = ["."]
+  revision = "9f5d223c60793748f04a9d5b4b4eacddfc1f755d"
+  version = "v1.1"
 
 [[projects]]
   branch = "master"
@@ -88,9 +146,24 @@
   ]
   revision = "c4c61651e9e37fa117f53c5a906d3b63090d8445"
 
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/crypto"
+  packages = [
+    "blake2s",
+    "sha3"
+  ]
+  revision = "614d502a4dac94afa3a6ce146bd1736da82514c6"
+
+[[projects]]
+  branch = "master"
+  name = "golang.org/x/sys"
+  packages = ["cpu"]
+  revision = "3b58ed4ad3395d483fc92d5d14123ce2c3581fec"
+
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2a087a2f92057bce980288903bb79894952158472d46725da39d3719995d339c"
+  inputs-digest = "3d9ed2e349a6f6bf6a0dc8f5c8a2b772c9b8430d43d07c0525653f1acde7ed8a"
   solver-name = "gps-cdcl"
   solver-version = 1
