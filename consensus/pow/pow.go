@@ -3,6 +3,12 @@ package pow
 import (
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/types"
+
+	"github.com/op/go-logging"
+)
+
+var (
+	logger = logging.MustGetLogger("pow")
 )
 
 type Pow struct {
