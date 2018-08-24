@@ -176,6 +176,7 @@
   version = "v1.0.8"
 
 [[projects]]
+<<<<<<< HEAD
   digest = "1:5b3b29ce0e569f62935d9541dff2e16cc09df981ebde48e82259076a73a3d0c7"
   name = "github.com/op/go-logging"
   packages = ["."]
@@ -192,6 +193,8 @@
   version = "v1.2.0"
 
 [[projects]]
+=======
+>>>>>>> 0d896f5... ADD:add ethash algorithm
   digest = "1:40e195917a951a8bf867cd05de2a46aaf1806c50cf92eebf4c16f78cd196f747"
   name = "github.com/pkg/errors"
   packages = ["."]
