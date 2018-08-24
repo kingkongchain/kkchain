@@ -6,7 +6,7 @@ import (
 	"math/big"
 
 	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/db"
+	"github.com/invin/kkchain/trie"
 )
 
 type Storage map[common.Hash]common.Hash
@@ -40,7 +40,7 @@ type stateObject struct {
 	dbErr    error
 
 	// Write caches.
-	trie db.Trie
+	trie trie.Trie
 
 	cachedStorage Storage // Storage entry cache to avoid duplicate reads
 	dirtyStorage  Storage // Storage entries that need to be flushed to disk

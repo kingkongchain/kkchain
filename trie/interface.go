@@ -1,4 +1,4 @@
-package db
+package trie
 
 import "github.com/invin/kkchain/common"
 

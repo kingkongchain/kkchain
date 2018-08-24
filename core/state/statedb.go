@@ -5,12 +5,13 @@ import (
 	"sync"
 
 	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/db"
+	"github.com/invin/kkchain/storage"
+	"github.com/invin/kkchain/trie"
 )
 
 type StateDB struct {
-	db   db.Database
-	trie db.Trie
+	db   storage.Database
+	trie trie.Trie
 
 	// This map holds 'live' objects, which will get modified while processing a state transition.
 	stateObjects      map[common.Address]*stateObject
@@ -21,7 +22,7 @@ type StateDB struct {
 }
 
 // Create a new state from a given trie.
-func New(db db.Database, tr db.Trie) (*StateDB, error) {
+func New(db storage.Database, tr trie.Trie) (*StateDB, error) {
 
 	// TODO: init trie
 
