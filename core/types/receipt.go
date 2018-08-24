@@ -35,7 +35,7 @@ type Receipt struct {
 
 // NewReceipt creates a barebone transaction receipt, copying the init fields.
 func NewReceipt(root []byte, failed bool, cumulativeGasUsed uint64) *Receipt {
-	r := &Receipt{PostState: root}
+	r := &Receipt{PostState: common.CopyBytes(root)}
 	if failed {
 		r.Status = ReceiptStatusFailed
 	} else {

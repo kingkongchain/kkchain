@@ -44,6 +44,9 @@ func NewContractCreation(nonce uint64, amount *big.Int, gasLimit uint64, gasPric
 }
 
 func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit uint64, gasPrice *big.Int, data []byte) *Transaction {
+	if len(data) > 0 {
+		data = common.CopyBytes(data)
+	}
 	d := txdata{
 		AccountNonce: nonce,
 		Recipient:    to,
@@ -65,7 +68,7 @@ func (tx *Transaction) ChainId() *big.Int {
 	return tx.data.V
 }
 
-func (tx *Transaction) Data() []byte     { return tx.data.Payload }
+func (tx *Transaction) Data() []byte     { return common.CopyBytes(tx.data.Payload) }
 func (tx *Transaction) Value() *big.Int  { return new(big.Int).Set(tx.data.Amount) }
 func (tx *Transaction) Nonce() uint64    { return tx.data.AccountNonce }
 func (tx *Transaction) CheckNonce() bool { return true }
