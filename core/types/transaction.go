@@ -21,10 +21,10 @@ type Transaction struct {
 }
 
 type txdata struct {
-	AccountNonce uint64          `json:"nonce"`
-	Recipient    *common.Address `json:"to" `
-	Amount       *big.Int        `json:"value" `
-	Payload      []byte          `json:"input" `
+	Nonce    uint64          `json:"nonce"`
+	Receiver *common.Address `json:"to" `
+	Amount   *big.Int        `json:"value" `
+	Payload  []byte          `json:"input" `
 
 	// Signature values
 	V *big.Int `json:"v"`
@@ -48,13 +48,13 @@ func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit 
 		data = common.CopyBytes(data)
 	}
 	d := txdata{
-		AccountNonce: nonce,
-		Recipient:    to,
-		Payload:      data,
-		Amount:       new(big.Int),
-		V:            new(big.Int),
-		R:            new(big.Int),
-		S:            new(big.Int),
+		Nonce:    nonce,
+		Receiver: to,
+		Payload:  data,
+		Amount:   new(big.Int),
+		V:        new(big.Int),
+		R:        new(big.Int),
+		S:        new(big.Int),
 	}
 	if amount != nil {
 		d.Amount.Set(amount)
@@ -70,16 +70,16 @@ func (tx *Transaction) ChainId() *big.Int {
 
 func (tx *Transaction) Data() []byte     { return common.CopyBytes(tx.data.Payload) }
 func (tx *Transaction) Value() *big.Int  { return new(big.Int).Set(tx.data.Amount) }
-func (tx *Transaction) Nonce() uint64    { return tx.data.AccountNonce }
+func (tx *Transaction) Nonce() uint64    { return tx.data.Nonce }
 func (tx *Transaction) CheckNonce() bool { return true }
 
 // To returns the recipient address of the transaction.
 // It returns nil if the transaction is a contract creation.
 func (tx *Transaction) Recipient() *common.Address {
-	if tx.data.Recipient == nil {
+	if tx.data.Receiver == nil {
 		return nil
 	}
-	to := *tx.data.Recipient
+	to := *tx.data.Receiver
 	return &to
 }
 
@@ -134,5 +134,5 @@ func TxDifference(a, b Transactions) Transactions {
 type TxByNonce Transactions
 
 func (s TxByNonce) Len() int           { return len(s) }
-func (s TxByNonce) Less(i, j int) bool { return s[i].data.AccountNonce < s[j].data.AccountNonce }
+func (s TxByNonce) Less(i, j int) bool { return s[i].data.Nonce < s[j].data.Nonce }
 func (s TxByNonce) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }

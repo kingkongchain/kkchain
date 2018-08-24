@@ -19,10 +19,10 @@ message BlockHeaderMsg {
 message TransactionMsg {
 
     // account nonce
-    uint64 AccountNonce = 1;
+    uint64 Nonce = 1;
 
     // receiver of this tx
-    bytes Recipient = 2;
+    bytes Receiver = 2;
 
     bytes Amount = 3;
 
