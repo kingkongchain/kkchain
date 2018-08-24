@@ -45,7 +45,7 @@ type ChainReader interface {
 type Engine interface {
 	Initialize(chain ChainReader, txs []types.Transaction) (*types.Block, error)
 
-	Execute(chain ChainReader, block *types.Block, result chan<- *types.Block) error
+	Execute(chain ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error)
 
 	Finalize(chain ChainReader, block *types.Block) error
 

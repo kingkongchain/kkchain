@@ -18,8 +18,8 @@ func (*Pow) Initialize(chain consensus.ChainReader, txs []types.Transaction) (*t
 	return nil, nil
 }
 
-func (*Pow) Execute(chain consensus.ChainReader, block *types.Block, result chan<- *types.Block) error {
-	return nil
+func (*Pow) Execute(chain consensus.ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error) {
+	return nil, nil
 }
 
 func (*Pow) Finalize(chain consensus.ChainReader, block *types.Block) error {
