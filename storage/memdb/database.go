@@ -1,10 +1,11 @@
-package storage
+package memdb 
 
 import (
 	"errors"
 	"sync"
 
 	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/storage"
 
 )
 
@@ -20,8 +21,8 @@ type MemDatabase struct {
 	lock sync.RWMutex
 }
 
-// NewMemDatabase creates a MemDatabase object 
-func NewMemDatabase() *MemDatabase {
+// New creates a MemDatabase object 
+func New() *MemDatabase {
 	return &MemDatabase{
 		db: make(map[string][]byte),
 	}
@@ -101,7 +102,7 @@ func (db *MemDatabase) Len() int {
 }
 
 // NewBatch is ignored for memory database
-func (db *MemDatabase) NewBatch() Batch {
+func (db *MemDatabase) NewBatch() storage.Batch {
 	return &memBatch{db: db}
 }
 

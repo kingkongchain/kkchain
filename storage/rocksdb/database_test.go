@@ -1,18 +1,24 @@
-package storage 
+package rocksdb 
 
 import (
 	"bytes"
 	"testing"
 
+	"github.com/invin/kkchain/storage"
+	"github.com/facebookgo/ensure"
 )
 
-func TestMemoryDB_PutGet(t *testing.T) {
-	testPutGet(NewMemDatabase(), t)
+func TestRocksdb_PutGet(t *testing.T) {
+	db, err := New("./tmp", nil)
+
+	ensure.Nil(t, err)
+
+	testPutGet(db, t)
 }
 
 var testValues = []string{"", "a", "1251", "\x00123\x00"}
 
-func testPutGet(db Database, t *testing.T) {
+func testPutGet(db storage.Database, t *testing.T) {
 	t.Parallel()
 
 	for _, k := range testValues {
@@ -32,7 +38,8 @@ func testPutGet(db Database, t *testing.T) {
 		}
 	}
 
-	_, err := db.Get([]byte("non-exist-key"))
+	val, err := db.Get([]byte("non-exist-key"))
+	t.Log(val)
 	if err == nil {
 		t.Fatalf("expect to return a not found error")
 	}
