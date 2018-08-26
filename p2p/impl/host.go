@@ -15,16 +15,16 @@ type Host struct {
 	id p2p.ID
 
 	// connection map
-	cMap map[string]p2p.Conn
+	connections map[string]p2p.Conn
 
 	// message handler map
-	hMap map[string]p2p.MessageHandler
+	handlers map[string]p2p.MessageHandler
 
 	// mutex to sync access
 	mux sync.Mutex
 
 	// notification listeners
-	nMap map[p2p.Notifiee]struct{}
+	notifiees map[p2p.Notifiee]struct{}
 
 	// notifier mux
 	notifyMux sync.Mutex
@@ -37,9 +37,9 @@ type Host struct {
 func NewHost(id p2p.ID, n p2p.Network) *Host {
 	return &Host{
 		id:   id,
-		cMap: make(map[string]p2p.Conn),
-		hMap: make(map[string]p2p.MessageHandler),
-		nMap: make(map[p2p.Notifiee]struct{}),
+		connections: make(map[string]p2p.Conn),
+		handlers: make(map[string]p2p.MessageHandler),
+		notifiees: make(map[p2p.Notifiee]struct{}),
 		n:    n,
 	}
 }
@@ -49,12 +49,12 @@ func (h *Host) Register(n p2p.Notifiee) error {
 	h.notifyMux.Lock()
 	defer h.notifyMux.Unlock()
 
-	_, found := h.nMap[n]
+	_, found := h.notifiees[n]
 	if found {
 		return errDuplicateNotifiee
 	}
 
-	h.nMap[n] = struct{}{}
+	h.notifiees[n] = struct{}{}
 
 	return nil
 }
@@ -64,12 +64,12 @@ func (h *Host) Revoke(n p2p.Notifiee) error {
 	h.notifyMux.Lock()
 	defer h.notifyMux.Unlock()
 
-	_, found := h.nMap[n]
+	_, found := h.notifiees[n]
 	if !found {
 		return errNotifieeNotFound
 	}
 
-	delete(h.nMap, n)
+	delete(h.notifiees, n)
 
 	return nil
 }
@@ -85,7 +85,7 @@ func (h *Host) notifyAll(notification func(n p2p.Notifiee)) {
 	defer h.notifyMux.Unlock()
 
 	var wg sync.WaitGroup
-	for n := range h.nMap {
+	for n := range h.notifiees {
 		wg.Add(1)
 		go func(n p2p.Notifiee) {
 			defer wg.Done()
@@ -158,14 +158,14 @@ func (h *Host) AddConnection(id p2p.ID, conn p2p.Conn) error {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	pk := string(id.PublicKey)
-	_, found := h.cMap[pk]
+	publicKey := string(id.PublicKey)
+	_, found := h.connections[publicKey]
 
 	if found {
 		return errDuplicateConnection
 	}
 
-	h.cMap[pk] = conn
+	h.connections[publicKey] = conn
 
 	// notify a new connection
 	h.notifyAll(func(n p2p.Notifiee) {
@@ -180,8 +180,8 @@ func (h *Host) Connection(id p2p.ID) (p2p.Conn, error) {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	pk := string(id.PublicKey)
-	conn, ok := h.cMap[pk]
+	publicKey := string(id.PublicKey)
+	conn, ok := h.connections[publicKey]
 
 	if !ok {
 		return nil, errConnectionNotFound
@@ -196,7 +196,7 @@ func (h *Host) GetAllConnection() map[string]p2p.Conn {
 	defer h.mux.Unlock()
 
 	// FIXME: return map directly?
-	return h.cMap
+	return h.connections
 }
 
 // RemoveConnection removes a connection
@@ -204,15 +204,15 @@ func (h *Host) RemoveConnection(id p2p.ID) error {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	pk := string(id.PublicKey)
-	conn, ok := h.cMap[pk]
+	publicKey := string(id.PublicKey)
+	conn, ok := h.connections[publicKey]
 
 	if !ok {
 		return errConnectionNotFound
 	}
 
 	conn.Close()
-	delete(h.cMap, pk)
+	delete(h.connections, publicKey)
 
 	// Notify subscribers that connection is removed from host
 	h.notifyAll(func(n p2p.Notifiee) {
@@ -227,10 +227,10 @@ func (h *Host) RemoveAllConnection() {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	for id, conn := range h.cMap {
+	for id, conn := range h.connections {
 		// Close connection to reclaim go routines for each connection
 		conn.Close()
-		delete(h.cMap, id)
+		delete(h.connections, id)
 	}
 }
 
@@ -263,12 +263,12 @@ func (h *Host) SetMessageHandler(protocol string, handler p2p.MessageHandler) er
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	_, found := h.hMap[protocol]
+	_, found := h.handlers[protocol]
 	if found {
 		return errDuplicateStream
 	}
 
-	h.hMap[protocol] = handler
+	h.handlers[protocol] = handler
 	return nil
 }
 
@@ -277,7 +277,7 @@ func (h *Host) MessageHandler(protocol string) (p2p.MessageHandler, error) {
 	h.mux.Lock()
 	defer h.mux.Unlock()
 
-	handler, ok := h.hMap[protocol]
+	handler, ok := h.handlers[protocol]
 
 	if !ok {
 		return nil, errStreamNotFound
