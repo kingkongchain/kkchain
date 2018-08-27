@@ -11,7 +11,21 @@ import (
 	"github.com/invin/kkchain/crypto/ed25519"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/impl"
+	"github.com/invinOther/kkchain/config"
+	"github.com/invinOther/kkchain/klogging"
 )
+
+// init config and loggingLoger
+func init() {
+	config.Init("")
+	klogging.Init(config.AppConfig.Log.GetString("log.level"), config.AppConfig.Log.GetString("log.format"))
+	// mainLogger.Debugf("debug %s", "secret")
+	// mainLogger.Info("info")
+	// mainLogger.Notice("notice")
+	// mainLogger.Warning("warning")
+	// mainLogger.Error("err")
+	// mainLogger.Critical("crit")
+}
 
 func main() {
 	port := flag.String("p", "9998", "")
