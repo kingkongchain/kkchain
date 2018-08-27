@@ -24,18 +24,48 @@ option (gogoproto.verbose_equal_all) = true;
 // option (gogoproto.populate_all) = true;
 // option (gogoproto.testgen_all) = true;
 
+message ChainStatusMsg {
+   uint64 chainID = 1;
+
+   // local total difficult
+   bytes td = 2;
+   bytes currentBlockHash = 3;
+   uint64 currentBlockNum = 4;
+   bytes genesisBlockHash = 5;
+}
+
+message GetBlockHeadersMsg {
+   uint64 startNum = 1;
+   uint64 endNum = 2;
+   repeated uint64 skipNum = 3;
+   bool direction = 4;
+}
+
+message DataMsg {
+   repeated bytes data = 1;
+}
 
 message Message {
     enum Type {
-		GET_BLOCK = 0;
-		GET_BLOCK_RESULT = 1;
+        CHAIN_STATUS = 0;
+		GET_BLOCK_BODIES = 1;
+		BLOCKS_BODIES = 2;
+		GET_BLOCK_HEADERS = 3;
+        BLOCK_HEADERS = 4;
+        TRANSACTIONS = 5;
+        GET_RECEIPTS = 6;
+        RECEIPTS = 7;
+        NEW_BLOCK_HASHS = 8;
+        NEW_BLOCK = 9;
     }
 
     // defines what type of message it is.
 	Type type = 1;
 
-    // other parameters
-
+    // message content
+    ChainStatusMsg chainStatusMsg = 2;
+    GetBlockHeadersMsg getBlockHeadersMsg = 3;
+    DataMsg dataMsg = 4;
 }
 
 
