@@ -4,13 +4,15 @@ import (
 	"context"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/glog"
 	"github.com/invin/kkchain/p2p"
+	"github.com/op/go-logging"
 )
 
 const (
 	protocolChain = "/kkchain/p2p/chain/1.0.0"
 )
+
+var log = logging.MustGetLogger("p2p/chain")
 
 // Chain implements protocol for chain related messages
 type Chain struct {
@@ -39,7 +41,7 @@ func (c *Chain) handleMessage(conn p2p.Conn, msg proto.Message) {
 		c.doHandleMessage(conn, message)
 	default:
 		conn.Close()
-		glog.Errorf("unexpected message: %v", msg)
+		log.Errorf("unexpected message: %v", msg)
 	}
 }
 
@@ -49,7 +51,7 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 	handler := c.handlerForMsgType(msg.GetType())
 	if handler == nil {
 		conn.Close()
-		glog.Errorf("unknown message type: %v", msg.GetType())
+		log.Errorf("unknown message type: %v", msg.GetType())
 		return
 	}
 
@@ -62,14 +64,14 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 
 	// if nil response, return it before serializing
 	if rpmes == nil {
-		glog.Warning("got back nil response from request")
+		log.Warning("got back nil response from request")
 		return
 	}
 
 	// send out response msg
 	if err = conn.WriteMessage(rpmes, protocolChain); err != nil {
 		conn.Close()
-		glog.Errorf("send response error: %s", err)
+		log.Errorf("send response error: %s", err)
 		return
 	}
 }

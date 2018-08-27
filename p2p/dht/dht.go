@@ -10,9 +10,8 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/glog"
 	"github.com/invin/kkchain/p2p"
-	"github.com/sirupsen/logrus"
+	"github.com/op/go-logging"
 )
 
 const (
@@ -27,7 +26,7 @@ const (
 )
 
 var (
-	log = logrus.New()
+	log = logging.MustGetLogger("p2p/dht")
 )
 
 type DHTConfig struct {
@@ -102,7 +101,7 @@ func (dht *DHT) handleMessage(c p2p.Conn, msg proto.Message) {
 		go dht.doHandleMessage(c, message)
 	default:
 		c.Close()
-		glog.Errorf("unexpected message: %v", msg)
+		log.Errorf("unexpected message: %v", msg)
 	}
 }
 
@@ -112,7 +111,7 @@ func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 	handler := dht.handlerForMsgType(msg.GetType())
 	if handler == nil {
 		c.Close()
-		glog.Errorf("unknown message type: %v", msg.GetType())
+		log.Errorf("unknown message type: %v", msg.GetType())
 		return
 	}
 
@@ -125,14 +124,14 @@ func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 
 	// if nil response, return it before serializing
 	if rpmes == nil {
-		glog.Warning("got back nil response from request")
+		log.Warning("got back nil response from request")
 		return
 	}
 
 	// send out response msg
 	if err = c.WriteMessage(rpmes, protocolDHT); err != nil {
 		c.Close()
-		glog.Errorf("send response error: %s", err)
+		log.Errorf("send response error: %s", err)
 		return
 	}
 

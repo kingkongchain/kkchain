@@ -6,9 +6,8 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/golang/glog"
 	"github.com/invin/kkchain/p2p"
-	"github.com/sirupsen/logrus"
+	"github.com/op/go-logging"
 )
 
 const (
@@ -23,7 +22,7 @@ var (
 )
 
 var (
-	log = logrus.New()
+	log = logging.MustGetLogger("p2p/handshake")
 )
 
 // Handshake implements protocol for handshaking
@@ -65,9 +64,7 @@ func (hs *Handshake) Handshake(c p2p.Conn, dir p2p.ConnDir) error {
 		msg, protocol, err := c.ReadMessage()
 
 		if protocol != protocolHandshake {
-			log.WithFields(logrus.Fields{
-				"protocol": protocol,
-			}).Error("Unexpected message")
+			log.Errorf("Unexpected message,protocol: %s", protocol)
 
 			err = errProtocol
 		} else {
@@ -131,7 +128,7 @@ func (hs *Handshake) doHandleMessage(c p2p.Conn, msg *Message) {
 
 	// if nil response, return it before serializing
 	if rpmes == nil {
-		glog.Warning("got back nil response from request")
+		log.Warning("got back nil response from request")
 		return
 	}
 
@@ -144,22 +141,18 @@ func (hs *Handshake) doHandleMessage(c p2p.Conn, msg *Message) {
 
 	// send out response msg
 	if err = c.WriteMessage(rpmes, protocolHandshake); err != nil {
-		glog.Errorf("send response error: %s", err)
+		log.Errorf("send response error: %s", err)
 		return
 	}
 }
 
 // Connected is called when new connection is established
 func (hs *Handshake) Connected(c p2p.Conn) {
-	log.WithFields(logrus.Fields{
-		"remoteID": c.RemotePeer(),
-	}).Info("A new connection is created")
+	log.Infof("A new connection is created,remote ID: %s", c.RemotePeer())
 
 }
 
 // Disconnected is called when the connection is closed
 func (hs *Handshake) Disconnected(c p2p.Conn) {
-	log.WithFields(logrus.Fields{
-		"remoteID": c.RemotePeer(),
-	}).Info("A peer is disconnected")
+	log.Infof("A peer is disconnected,remote ID: %s", c.RemotePeer())
 }

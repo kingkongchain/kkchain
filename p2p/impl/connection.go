@@ -12,7 +12,6 @@ import (
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/protobuf"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -82,10 +81,7 @@ func (c *Connection) WriteMessage(message proto.Message, protocol string) error 
 	// set protocol
 	signed.Protocol = protocol
 
-	log.WithFields(logrus.Fields{
-		"protocol": protocol,
-		"msg":      message,
-	}).Info("Send message")
+	log.Info("Send message")
 
 	return c.write(c.conn, signed, &c.mux)
 }
@@ -240,10 +236,7 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 		return nil, "", err
 	}
 
-	log.WithFields(logrus.Fields{
-		"protocol": msg.Protocol,
-		"msg":      ptr.Message,
-	}).Info("Received a message")
+	log.Info("Received a message")
 
 	return ptr.Message, msg.Protocol, nil
 }

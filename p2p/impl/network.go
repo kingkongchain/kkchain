@@ -1,7 +1,6 @@
 package impl
 
 import (
-	"encoding/hex"
 	"fmt"
 	"net"
 
@@ -10,13 +9,13 @@ import (
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/dht"
 	"github.com/jbenet/goprocess"
+	"github.com/op/go-logging"
 	"github.com/pkg/errors"
-	"github.com/sirupsen/logrus"
 )
 
 var (
 	errServerStopped = errors.New("server stopped")
-	log              = logrus.New()
+	log              = logging.MustGetLogger("p2p/impl")
 )
 
 // Network represents the whole stack of p2p communication between peers
@@ -98,7 +97,7 @@ func (n *Network) Start() error {
 			return err
 		}
 	} else {
-		log.Warn("P2P server will be useless, not listening")
+		log.Warning("P2P server will be useless, not listening")
 	}
 
 	// Start process to connect seed nodes
@@ -204,18 +203,12 @@ func (n *Network) bootstrap(p goprocess.Process) {
 		go func() {
 			_, err := n.host.Connect(peer.Address)
 			if err != nil {
-				log.WithFields(logrus.Fields{
-					"address": peer.Address,
-					"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
-				}).Error("failed to connect boost node")
+				log.Errorf("failed to connect boost node: %s", peer.String())
 				return
 			}
 
 			// TODO: optimize
-			log.WithFields(logrus.Fields{
-				"address": peer.Address,
-				"nodeID":  hex.EncodeToString(peer.ID.PublicKey),
-			}).Info("success to connect boost node")
+			log.Infof("success to connect boost node: %s", peer.String())
 		}()
 	}
 }

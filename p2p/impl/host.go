@@ -1,11 +1,8 @@
 package impl
 
 import (
-	"sync"
-
-	"github.com/sirupsen/logrus"
-
 	"net"
+	"sync"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
@@ -101,9 +98,7 @@ func (h *Host) notifyAll(notification func(n p2p.Notifiee)) {
 
 // OnConnectionCreated is called when new connection is available
 func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
-	log.WithFields(logrus.Fields{
-		"direction": dir,
-	}).Info("A connection is created")
+	log.Infof("A connection is created,direction: %s", dir)
 	// Loop to handle messages
 	go func() {
 		defer c.Close()
@@ -120,9 +115,7 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 			return
 		}
 
-		log.WithFields(logrus.Fields{
-			"peerID": pid,
-		}).Info("Loop to handle messages")
+		log.Infof("Loop to handle messages,remote ID: %s", pid)
 		// handle other messages
 		for {
 			msg, protocol, err := c.ReadMessage()

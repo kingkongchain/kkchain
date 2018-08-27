@@ -7,12 +7,12 @@ import (
 
 	"encoding/hex"
 
+	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/crypto/blake2b"
 	"github.com/invin/kkchain/crypto/ed25519"
+	"github.com/invin/kkchain/klogging"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/impl"
-	"github.com/invinOther/kkchain/config"
-	"github.com/invinOther/kkchain/klogging"
 )
 
 // init config and loggingLoger
