@@ -1,0 +1,3 @@
+[log]
+level="INFO"
+format="%{color}%{time:15:04:05.000} [%{module}] %{shortfunc} -> %{level:.4s} %{id:03x}%{color:reset} %{message}"
