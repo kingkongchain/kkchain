@@ -30,6 +30,8 @@ func New(host p2p.Host) *Chain {
 		panic(err)
 	}
 
+	host.Register(c)
+
 	return c
 }
 
@@ -74,4 +76,32 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 		log.Errorf("send response error: %s", err)
 		return
 	}
+}
+
+func (c *Chain) Connected(conn p2p.Conn) {
+	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
+
+	// TODO: get current chain info
+	chainID := uint64(1)
+	td := []byte("12345678")
+	currentBlockHash := []byte("0xgjkhfjkgfdfjkjksg")
+	currentBlockNum := uint64(250)
+	genesisBlockHash := []byte("0xgjkhfjkgfdfjkjksg")
+
+	chainMsg := &ChainStatusMsg{
+		ChainID:          chainID,
+		Td:               td,
+		CurrentBlockHash: currentBlockHash,
+		CurrentBlockNum:  currentBlockNum,
+		GenesisBlockHash: genesisBlockHash,
+	}
+	chainStatueMsg := NewMessage(Message_CHAIN_STATUS, chainMsg)
+	err := conn.WriteMessage(chainStatueMsg, protocolChain)
+	if err != nil {
+		log.Errorf("failed to send chain status msg to %s", conn.RemotePeer())
+	}
+}
+
+func (c *Chain) Disconnected(conn p2p.Conn) {
+	log.Infof("a disconn is notified,remote ID: %s", conn.RemotePeer())
 }
