@@ -165,7 +165,7 @@ func (n *Network) startListening() error {
 					log.Info("Shutting down server")
 					return
 				default:
-					log.Error(err)
+					log.Errorf("failed to listen accept,error: %v", err)
 				}
 			}
 		}
@@ -188,7 +188,7 @@ func (n *Network) bootstrap(p goprocess.Process) {
 		// Parse peer address to get IP
 		peer, err := dht.ParsePeerAddr(node)
 		if err != nil {
-			log.Error(err)
+			log.Errorf("failed to parse peer address,error: %v", err)
 			continue
 		}
 

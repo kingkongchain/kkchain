@@ -36,11 +36,11 @@ type Host struct {
 // NewHost creates a new host object
 func NewHost(id p2p.ID, n p2p.Network) *Host {
 	return &Host{
-		id:   id,
+		id:          id,
 		connections: make(map[string]p2p.Conn),
-		handlers: make(map[string]p2p.MessageHandler),
-		notifiees: make(map[p2p.Notifiee]struct{}),
-		n:    n,
+		handlers:    make(map[string]p2p.MessageHandler),
+		notifiees:   make(map[p2p.Notifiee]struct{}),
+		n:           n,
 	}
 }
 
@@ -105,13 +105,13 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 		// handeshake
 		hs := handshake.New(h)
 		if err := hs.Handshake(c, dir); err != nil {
-			log.Error(err)
+			log.Errorf("failed to handshake,error: %v", err)
 			return
 		}
 
 		pid := c.RemotePeer()
 		if err := h.AddConnection(pid, c); err != nil {
-			log.Error(err)
+			log.Errorf("failed to add conn,error: %v", err)
 			return
 		}
 
@@ -121,14 +121,14 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 			msg, protocol, err := c.ReadMessage()
 			if err != nil {
 				if err != errEmptyMessage {
-					log.Error(err)
+					log.Errorf("failed to read msg,error: %v", err)
 				}
 				break
 			}
 
 			err = h.dispatchMessage(c, msg, protocol)
 			if err != nil {
-				log.Error(err)
+				log.Errorf("failed to dispatch msg,error: %v", err)
 				break
 			}
 		}

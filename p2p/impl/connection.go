@@ -175,7 +175,7 @@ func (c *Connection) ReadMessage() (proto.Message, string, error) {
 	}
 
 	if err != nil {
-		log.Info(err)
+		return nil, "", err
 	}
 
 	// Decode message size.
@@ -232,7 +232,7 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 	// unmarshal message
 	var ptr types.DynamicAny
 	if err := types.UnmarshalAny(msg.Message, &ptr); err != nil {
-		log.Error(err)
+		log.Errorf("failed to unmarshal protobuf msg: %v", err)
 		return nil, "", err
 	}
 
