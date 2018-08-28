@@ -9,7 +9,6 @@ import (
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/storage"
-	"github.com/invin/kkchain/log"
 	"github.com/invin/kkchain/rlp"
 )
 
