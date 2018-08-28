@@ -28,8 +28,8 @@ func New() *MemDatabase {
 	}
 }
 
-// NewMemDatabaseWithCap creates a MemDatabase object with capacity 
-func NewMemDatabaseWithCap(size int) *MemDatabase {
+// NewWithCap creates a MemDatabase object with capacity 
+func NewWithCap(size int) *MemDatabase {
 	return &MemDatabase{
 		db: make(map[string][]byte, size),
 	}

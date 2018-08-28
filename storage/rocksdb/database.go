@@ -51,6 +51,10 @@ func New(dir string, applyOpts func(opts *rdb.Options)) (*RDBDatabase, error) {
 		writeOptions: rdb.NewDefaultWriteOptions()}, nil
 }
 
+// Path returns the path to the database directory.
+func (r *RDBDatabase) Path() string {
+	return r.dir
+}
 
 // Put writes a key-value pair to the database
 func (r *RDBDatabase) Put(key []byte, value []byte) error {
