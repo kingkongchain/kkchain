@@ -1,7 +1,7 @@
 package consensus
 
 import (
-	"github.com/invin/kkchain/types"
+	"github.com/invin/kkchain/core/types"
 )
 
 type Context struct {
@@ -48,8 +48,6 @@ type Engine interface {
 	Execute(chain ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error)
 
 	Finalize(chain ChainReader, block *types.Block) error
-
-	Abort(block *types.Block)
 
 	VerifyHeader(header *types.Header) error
 	Verify(block *types.Block) error

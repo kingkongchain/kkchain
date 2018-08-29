@@ -44,6 +44,12 @@ func (h *Header) Hash() common.Hash {
 	return common.Hash{}
 }
 
+// HashNoNonce returns the hash which is used as input for the proof-of-work search.
+func (h *Header) HashNoNonce() common.Hash {
+	//TODO: implement
+	return common.Hash{}
+}
+
 type Block struct {
 	header       *Header
 	transactions Transactions
@@ -64,7 +70,9 @@ type Block struct {
 
 func NewBlock(header *Header, txs []*Transaction) *Block {
 	// TODO:
-	return nil
+	b := &Block{header: CopyHeader(header), td: new(big.Int)}
+
+	return b
 }
 
 func NewBlockWithHeader(header *Header) *Block {
