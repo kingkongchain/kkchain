@@ -33,13 +33,10 @@ import (
 	"time"
 	"unsafe"
 
-	mmap "github.com/edsrzf/mmap-go"
-	"github.com/ethereum/go-ethereum/common"
-	"github.com/ethereum/go-ethereum/consensus"
-	"github.com/ethereum/go-ethereum/core/types"
-	"github.com/ethereum/go-ethereum/log"
-	"github.com/ethereum/go-ethereum/metrics"
-	"github.com/ethereum/go-ethereum/rpc"
+	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/core/types"
+
+	"github.com/edsrzf/mmap-go"
 	"github.com/hashicorp/golang-lru/simplelru"
 )
 
@@ -166,7 +163,7 @@ func newlru(what string, maxItems int, new func(epoch uint64) interface{}) *lru 
 		maxItems = 1
 	}
 	cache, _ := simplelru.NewLRU(maxItems, func(key, value interface{}) {
-		log.Trace("Evicted ethash "+what, "epoch", key)
+		logger.Debug("Evicted ethash "+what, "epoch", key)
 	})
 	return &lru{what: what, new: new, cache: cache}
 }
@@ -184,14 +181,14 @@ func (lru *lru) get(epoch uint64) (item, future interface{}) {
 		if lru.future > 0 && lru.future == epoch {
 			item = lru.futureItem
 		} else {
-			log.Trace("Requiring new ethash "+lru.what, "epoch", epoch)
+			logger.Debug("Requiring new ethash "+lru.what, "epoch", epoch)
 			item = lru.new(epoch)
 		}
 		lru.cache.Add(epoch, item)
 	}
 	// Update the 'future item' if epoch is larger than previously seen.
 	if epoch < maxEpoch-1 && lru.future < epoch+1 {
-		log.Trace("Requiring new future ethash "+lru.what, "epoch", epoch+1)
+		logger.Debug("Requiring new future ethash "+lru.what, "epoch", epoch+1)
 		future = lru.new(epoch + 1)
 		lru.future = epoch + 1
 		lru.futureItem = future
@@ -234,7 +231,7 @@ func (c *cache) generate(dir string, limit int, test bool) {
 			endian = ".be"
 		}
 		path := filepath.Join(dir, fmt.Sprintf("cache-R%d-%x%s", algorithmRevision, seed[:8], endian))
-		logger := log.New("epoch", c.epoch)
+		//logger := log.New("epoch", c.epoch)
 
 		// We're about to mmap the file, ensure that the mapping is cleaned up when the
 		// cache becomes unused.
@@ -320,7 +317,7 @@ func (d *dataset) generate(dir string, limit int, test bool) {
 			endian = ".be"
 		}
 		path := filepath.Join(dir, fmt.Sprintf("full-R%d-%x%s", algorithmRevision, seed[:8], endian))
-		logger := log.New("epoch", d.epoch)
+		//logger := log.New("epoch", d.epoch)
 
 		// We're about to mmap the file, ensure that the mapping is cleaned up when the
 		// cache becomes unused.
@@ -438,10 +435,10 @@ type Ethash struct {
 	datasets *lru // In memory datasets to avoid regenerating too often
 
 	// Mining related fields
-	rand     *rand.Rand    // Properly seeded random source for nonces
-	threads  int           // Number of threads to mine on if mining
-	update   chan struct{} // Notification channel to update mining parameters
-	hashrate metrics.Meter // Meter tracking the average hashrate
+	rand    *rand.Rand    // Properly seeded random source for nonces
+	threads int           // Number of threads to mine on if mining
+	update  chan struct{} // Notification channel to update mining parameters
+	//hashrate metrics.Meter // Meter tracking the average hashrate
 
 	// Remote sealer related fields
 	workCh       chan *types.Block // Notification channel to push new work to remote sealer
@@ -466,21 +463,21 @@ type Ethash struct {
 // packages.
 func New(config Config, notify []string) *Ethash {
 	if config.CachesInMem <= 0 {
-		log.Warn("One ethash cache must always be in memory", "requested", config.CachesInMem)
+		logger.Warning("One ethash cache must always be in memory", "requested", config.CachesInMem)
 		config.CachesInMem = 1
 	}
 	if config.CacheDir != "" && config.CachesOnDisk > 0 {
-		log.Info("Disk storage enabled for ethash caches", "dir", config.CacheDir, "count", config.CachesOnDisk)
+		logger.Info("Disk storage enabled for ethash caches", "dir", config.CacheDir, "count", config.CachesOnDisk)
 	}
 	if config.DatasetDir != "" && config.DatasetsOnDisk > 0 {
-		log.Info("Disk storage enabled for ethash DAGs", "dir", config.DatasetDir, "count", config.DatasetsOnDisk)
+		logger.Info("Disk storage enabled for ethash DAGs", "dir", config.DatasetDir, "count", config.DatasetsOnDisk)
 	}
 	ethash := &Ethash{
-		config:       config,
-		caches:       newlru("cache", config.CachesInMem, newCache),
-		datasets:     newlru("dataset", config.DatasetsInMem, newDataset),
-		update:       make(chan struct{}),
-		hashrate:     metrics.NewMeter(),
+		config:   config,
+		caches:   newlru("cache", config.CachesInMem, newCache),
+		datasets: newlru("dataset", config.DatasetsInMem, newDataset),
+		update:   make(chan struct{}),
+		//hashrate:     metrics.NewMeter(),
 		workCh:       make(chan *types.Block),
 		resultCh:     make(chan *types.Block),
 		fetchWorkCh:  make(chan *sealWork),
@@ -489,7 +486,7 @@ func New(config Config, notify []string) *Ethash {
 		submitRateCh: make(chan *hashrate),
 		exitCh:       make(chan chan error),
 	}
-	go ethash.remote(notify)
+	//go ethash.remote(notify)
 	return ethash
 }
 
@@ -497,11 +494,11 @@ func New(config Config, notify []string) *Ethash {
 // purposes.
 func NewTester(notify []string) *Ethash {
 	ethash := &Ethash{
-		config:       Config{PowMode: ModeTest},
-		caches:       newlru("cache", 1, newCache),
-		datasets:     newlru("dataset", 1, newDataset),
-		update:       make(chan struct{}),
-		hashrate:     metrics.NewMeter(),
+		config:   Config{PowMode: ModeTest},
+		caches:   newlru("cache", 1, newCache),
+		datasets: newlru("dataset", 1, newDataset),
+		update:   make(chan struct{}),
+		//hashrate:     metrics.NewMeter(),
 		workCh:       make(chan *types.Block),
 		resultCh:     make(chan *types.Block),
 		fetchWorkCh:  make(chan *sealWork),
@@ -510,7 +507,7 @@ func NewTester(notify []string) *Ethash {
 		submitRateCh: make(chan *hashrate),
 		exitCh:       make(chan chan error),
 	}
-	go ethash.remote(notify)
+	//go ethash.remote(notify)
 	return ethash
 }
 
@@ -669,43 +666,43 @@ func (ethash *Ethash) SetThreads(threads int) {
 // per second over the last minute.
 // Note the returned hashrate includes local hashrate, but also includes the total
 // hashrate of all remote miner.
-func (ethash *Ethash) Hashrate() float64 {
-	// Short circuit if we are run the ethash in normal/test mode.
-	if ethash.config.PowMode != ModeNormal && ethash.config.PowMode != ModeTest {
-		return ethash.hashrate.Rate1()
-	}
-	var res = make(chan uint64, 1)
-
-	select {
-	case ethash.fetchRateCh <- res:
-	case <-ethash.exitCh:
-		// Return local hashrate only if ethash is stopped.
-		return ethash.hashrate.Rate1()
-	}
-
-	// Gather total submitted hash rate of remote sealers.
-	return ethash.hashrate.Rate1() + float64(<-res)
-}
-
-// APIs implements consensus.Engine, returning the user facing RPC APIs.
-func (ethash *Ethash) APIs(chain consensus.ChainReader) []rpc.API {
-	// In order to ensure backward compatibility, we exposes ethash RPC APIs
-	// to both eth and ethash namespaces.
-	return []rpc.API{
-		{
-			Namespace: "eth",
-			Version:   "1.0",
-			Service:   &API{ethash},
-			Public:    true,
-		},
-		{
-			Namespace: "ethash",
-			Version:   "1.0",
-			Service:   &API{ethash},
-			Public:    true,
-		},
-	}
-}
+//func (ethash *Ethash) Hashrate() float64 {
+//	// Short circuit if we are run the ethash in normal/test mode.
+//	if ethash.config.PowMode != ModeNormal && ethash.config.PowMode != ModeTest {
+//		return ethash.hashrate.Rate1()
+//	}
+//	var res = make(chan uint64, 1)
+//
+//	select {
+//	case ethash.fetchRateCh <- res:
+//	case <-ethash.exitCh:
+//		// Return local hashrate only if ethash is stopped.
+//		return ethash.hashrate.Rate1()
+//	}
+//
+//	// Gather total submitted hash rate of remote sealers.
+//	return ethash.hashrate.Rate1() + float64(<-res)
+//}
+//
+//// APIs implements consensus.Engine, returning the user facing RPC APIs.
+//func (ethash *Ethash) APIs(chain consensus.ChainReader) []rpc.API {
+//	// In order to ensure backward compatibility, we exposes ethash RPC APIs
+//	// to both eth and ethash namespaces.
+//	return []rpc.API{
+//		{
+//			Namespace: "eth",
+//			Version:   "1.0",
+//			Service:   &API{ethash},
+//			Public:    true,
+//		},
+//		{
+//			Namespace: "ethash",
+//			Version:   "1.0",
+//			Service:   &API{ethash},
+//			Public:    true,
+//		},
+//	}
+//}
 
 // SeedHash is the seed to use for generating a verification cache and the mining
 // dataset.
