@@ -47,7 +47,7 @@ func (ethash *Ethash) Initialize(chain consensus.ChainReader, txs []types.Transa
 
 	header.Difficulty = calcDifficultyFrontier(header.Time.Uint64(), parent)
 
-	return types.NewBlock(header, nil), nil
+	return types.NewBlock(header, nil, nil), nil
 }
 
 func (ethash *Ethash) Execute(chain consensus.ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error) {
