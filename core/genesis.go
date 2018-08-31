@@ -3,11 +3,12 @@ package core
 import (
 	"encoding/json"
 	"fmt"
+	"math/big"
+	"os"
+
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/common/hexutil"
 	"github.com/invin/kkchain/core/types"
-	"math/big"
-	"os"
 )
 
 //for test
@@ -78,7 +79,7 @@ func (g *Genesis) ToBlock() *types.Block {
 		StateRoot:  common.Hash{},
 	}
 
-	return types.NewBlock(head, nil)
+	return types.NewBlock(head, nil, nil)
 }
 
 // DefaultGenesisBlock returns the Ethereum main net genesis block.
