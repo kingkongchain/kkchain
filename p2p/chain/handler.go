@@ -2,8 +2,9 @@ package chain
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
+
+	"bytes"
 
 	"github.com/invin/kkchain/p2p"
 	"github.com/pkg/errors"
@@ -41,16 +42,22 @@ func (c *Chain) handlerForMsgType(t Message_Type) chainHandler {
 
 func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
 	fmt.Println("接收到chain status消息：%v", pmes.String())
-
-	// TODO: store local chain in context ?
-
+	localChainID := c.blockchain.ChainID()
+	currentBlock := c.blockchain.CurrentBlock()
+	localChainTD := currentBlock.DeprecatedTd().Bytes()
+	localChainCurrentBlockHash := currentBlock.Hash().Bytes()
+	localChainCurrentBlockNum := currentBlock.NumberU64()
+	localChainGenesisBlock := c.blockchain.GenesisBlock().Hash().Bytes()
 	remoteChainStatus := pmes.ChainStatusMsg
-	if ctx.Value("localChainID") != remoteChainStatus.ChainID ||
-		ctx.Value("localChainGenesisBlock") != hex.EncodeToString(remoteChainStatus.GenesisBlockHash) {
+	if remoteChainStatus == nil {
+		return nil, errors.New("empty msg content")
+	}
+	if localChainID != remoteChainStatus.ChainID ||
+		!bytes.Equal(localChainGenesisBlock, remoteChainStatus.GenesisBlockHash) {
 		return nil, errors.Errorf("remote node %s is in different chain", p.String())
 	}
-	if ctx.Value("localChainTD") == hex.EncodeToString(remoteChainStatus.Td) &&
-		ctx.Value("localChainCurrentBlockHash") == hex.EncodeToString(remoteChainStatus.CurrentBlockHash) {
+	if bytes.Equal(localChainTD, remoteChainStatus.Td) &&
+		bytes.Equal(localChainCurrentBlockHash, remoteChainStatus.CurrentBlockHash) {
 		return nil, nil
 	}
 
@@ -61,12 +68,11 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 		direction = false
 		resp      = new(Message)
 	)
-	localCurrentBlockNum := ctx.Value("localChainCurrentBlockNum").(uint64)
 	remoteCurrentBlockNum := remoteChainStatus.CurrentBlockNum
 
 	// local node falls behind, should send get block headers msg
-	if localCurrentBlockNum < remoteCurrentBlockNum {
-		startNum = localCurrentBlockNum + 1
+	if localChainCurrentBlockNum < remoteCurrentBlockNum {
+		startNum = localChainCurrentBlockNum + 1
 		endNum = remoteCurrentBlockNum
 
 		// TODO: checkout local receive broadcast block that between startNum and endNum
@@ -81,7 +87,7 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 	}
 
 	// remote node falls behind, should send new block hashes msg
-	if localCurrentBlockNum > remoteCurrentBlockNum {
+	if localChainCurrentBlockNum > remoteCurrentBlockNum {
 		// TODO: iterator prev from current block , find block hash until the remote block num
 		newBlockHashesMsg := &DataMsg{
 			Data: [][]byte{},
