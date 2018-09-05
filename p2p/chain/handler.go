@@ -6,8 +6,18 @@ import (
 
 	"bytes"
 
+	"encoding/json"
+
+	"encoding/hex"
+
+	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
 	"github.com/pkg/errors"
+)
+
+var (
+	errEmptyMsgContent = errors.New("empty msg content")
 )
 
 // chainHandler specifies the signature of functions that handle DHT messages.
@@ -50,7 +60,7 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 	localChainGenesisBlock := c.blockchain.GenesisBlock().Hash().Bytes()
 	remoteChainStatus := pmes.ChainStatusMsg
 	if remoteChainStatus == nil {
-		return nil, errors.New("empty msg content")
+		return nil, errEmptyMsgContent
 	}
 	if localChainID != remoteChainStatus.ChainID ||
 		!bytes.Equal(localChainGenesisBlock, remoteChainStatus.GenesisBlockHash) {
@@ -99,73 +109,268 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 }
 
 func (c *Chain) handleGetBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
 	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
+	// collect bodies
+	bodies := [][]byte{}
+	for _, hbytes := range msg.Data {
+		hash := common.Hash{}
+		err = json.Unmarshal(hbytes, &hash)
+		if err != nil {
+			log.Error("failed to unmarshal bytes(%s) to common hash", hex.EncodeToString(hbytes))
+			continue
+		}
+
+		block := c.blockchain.GetBlockByHash(hash)
+		if block == nil {
+			log.Error("failed to get block %s from local", hash.String())
+			continue
+		}
+		body := block.Body()
+
+		bbytes, err := json.Marshal(body)
+		if err != nil {
+			log.Error("failed to marshal block body %d to bytes", block.NumberU64())
+			continue
+		}
+		bodies = append(bodies, bbytes)
+
+		blockBodiesMsg := DataMsg{
+			Data: bodies,
+		}
+		resp = NewMessage(Message_BLOCKS_BODIES, blockBodiesMsg)
+	}
+
 	return resp, nil
 }
 
 func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
 	var resp *Message
+	msg := pmes.GetBlockHeadersMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
+	hasSkipped := func(skip []uint64, num uint64) bool {
+		for _, skipNum := range skip {
+			if skipNum == num {
+				return true
+			}
+		}
+		return false
+	}
+
+	// append headers from local blockchain
+	headerBytes := [][]byte{}
+	for i := msg.StartNum; i <= msg.EndNum; i++ {
+		if len(msg.SkipNum) > 0 && hasSkipped(msg.SkipNum, i) {
+			continue
+		}
+		header := c.blockchain.GetHeaderByNumber(i)
+		if header == nil {
+			log.Error("failed to get header %d from local", i)
+			continue
+		}
+		hbytes, err := json.Marshal(header)
+		if err != nil {
+			log.Error("failed to marshal block header %d to bytes", i)
+			continue
+		}
+		headerBytes = append(headerBytes, hbytes)
+	}
+
+	// response block headers msg
+	blockHeadersMsg := &DataMsg{
+		Data: headerBytes,
+	}
+	resp = NewMessage(Message_BLOCK_HEADERS, blockHeadersMsg)
 	return resp, nil
 }
 
 func (c *Chain) handleBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
-	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
-	return resp, nil
+	for _, bbytes := range msg.Data {
+		body := new(*types.Body)
+		err = json.Unmarshal(bbytes, body)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to block body")
+			continue
+		}
+		log.Info("receive block body %v", body.Transactions)
+
+		// TODO: execute received body tx to local chain
+
+	}
+
+	// no resp for block bodies
+	return nil, nil
 }
 
 func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
-	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
-	return resp, nil
+	for _, hbytes := range msg.Data {
+		header := new(*types.Header)
+		err = json.Unmarshal(hbytes, header)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to block header")
+			continue
+		}
+		log.Info("receive header %s", header.Hash().String())
+
+		// TODO: insert received header to local chain
+
+	}
+
+	// no response for block headers msg
+	return nil, nil
 }
 
 func (c *Chain) handleTransactions(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
-	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
-	return resp, nil
+	for _, txbytes := range msg.Data {
+		tx := new(*types.Transaction)
+		err = json.Unmarshal(txbytes, tx)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to transaction")
+			continue
+		}
+
+		// TODO: execute received tx ..
+
+	}
+
+	// no resp
+	return nil, nil
 }
 
 func (c *Chain) handleGetReceipts(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
 	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
+	receiptBytes := [][]byte{}
+	for _, rhbytes := range msg.Data {
+		receiptHash := common.Hash{}
+		err = json.Unmarshal(rhbytes, &receiptHash)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to transaction")
+			continue
+		}
+
+		receipt := c.blockchain.GetReceiptByHash(receiptHash)
+		rbytes, err := json.Marshal(receipt)
+		if err != nil {
+			log.Error("failed to marshal receipt to bytes")
+			continue
+		}
+
+		receiptBytes = append(receiptBytes, rbytes)
+	}
+	receiptsMsg := &DataMsg{
+		Data: receiptBytes,
+	}
+	resp = NewMessage(Message_RECEIPTS, receiptsMsg)
 	return resp, nil
 }
 
 func (c *Chain) handleReceipts(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
-	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
-	return resp, nil
+	for _, rbytes := range msg.Data {
+		receipt := new(*types.Receipt)
+		err = json.Unmarshal(rbytes, receipt)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to receipt")
+			continue
+		}
+
+		// TODO: update local state ..
+
+	}
+
+	// no resp
+	return nil, nil
 }
 
 func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
 	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
+	// collect block headers
+	hashBytes := msg.Data
+	headerBytes := [][]byte{}
+	for _, hbytes := range hashBytes {
+		hash := common.Hash{}
+		err = json.Unmarshal(hbytes, &hash)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to common hash")
+			continue
+		}
+		header := c.blockchain.GetHeaderByHash(hash)
+		if header == nil {
+			log.Error("failed to get header %s from local", hash.String())
+			continue
+		}
+		hbytes, err := json.Marshal(header)
+		if err != nil {
+			log.Error("failed to marshal block header %s to bytes", hash.String())
+			continue
+		}
+		headerBytes = append(headerBytes, hbytes)
+	}
+
+	// TODO：use fetcher or directly send p2p response ？
+
+	// p2p resp: send block headers msg
+	blockHeadersMsg := &DataMsg{
+		Data: headerBytes,
+	}
+	resp = NewMessage(Message_BLOCK_HEADERS, blockHeadersMsg)
 	return resp, nil
 }
 
 func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	// Check result and return corresponding code
-	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
 
-	// TODO:
-	return resp, nil
+	for _, bbytes := range msg.Data {
+		block := new(*types.Block)
+		err = json.Unmarshal(bbytes, block)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to block")
+			continue
+		}
+
+		// TODO: insert received block to local chain
+
+	}
+
+	// no resp
+	return nil, nil
 }

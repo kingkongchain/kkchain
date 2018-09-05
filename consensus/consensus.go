@@ -1,6 +1,7 @@
 package consensus
 
 import (
+	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
 )
 
@@ -29,16 +30,16 @@ type ChainReader interface {
 	CurrentHeader() *types.Header
 
 	// GetHeader retrieves a block header from the database by hash and number.
-	GetHeader(hash []byte, number uint64) *types.Header
+	GetHeader(hash common.Hash, number uint64) *types.Header
 
 	// GetHeaderByNumber retrieves a block header from the database by number.
 	GetHeaderByNumber(number uint64) *types.Header
 
 	// GetHeaderByHash retrieves a block header from the database by its hash.
-	GetHeaderByHash(hash []byte) *types.Header
+	GetHeaderByHash(hash common.Hash) *types.Header
 
 	// GetBlock retrieves a block from the database by hash and number.
-	GetBlock(hash []byte, number uint64) *types.Block
+	GetBlock(hash common.Hash, number uint64) *types.Block
 }
 
 // Engine is an algorithm agnostic consensus engine.

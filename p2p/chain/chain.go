@@ -70,6 +70,9 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 	// if nil response, return it before serializing
 	if rpmes == nil {
 		log.Warning("got back nil response from request")
+		if err != nil {
+			log.Error("failed to make response for request,error: %v", err)
+		}
 		return
 	}
 

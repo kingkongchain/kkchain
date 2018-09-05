@@ -3,6 +3,7 @@ package core
 import (
 	"sync/atomic"
 
+	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
 )
@@ -49,7 +50,7 @@ func (bc *BlockChain) CurrentHeader() *types.Header {
 }
 
 // GetHeader retrieves a block header from the database by hash and number.
-func (bc *BlockChain) GetHeader(hash []byte, number uint64) *types.Header {
+func (bc *BlockChain) GetHeader(hash common.Hash, number uint64) *types.Header {
 	return nil
 }
 
@@ -59,12 +60,20 @@ func (bc *BlockChain) GetHeaderByNumber(number uint64) *types.Header {
 }
 
 // GetHeaderByHash retrieves a block header from the database by its hash.
-func (bc *BlockChain) GetHeaderByHash(hash []byte) *types.Header {
+func (bc *BlockChain) GetHeaderByHash(hash common.Hash) *types.Header {
 	return nil
 }
 
 // GetBlock retrieves a block from the database by hash and number.
-func (bc *BlockChain) GetBlock(hash []byte, number uint64) *types.Block {
+func (bc *BlockChain) GetBlock(hash common.Hash, number uint64) *types.Block {
+	return nil
+}
+
+func (bc *BlockChain) GetBlockByHash(hash common.Hash) *types.Block {
+	return nil
+}
+
+func (bc *BlockChain) GetReceiptByHash(hash common.Hash) *types.Receipt {
 	return nil
 }
 
