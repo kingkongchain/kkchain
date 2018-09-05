@@ -3,13 +3,16 @@ package impl
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net"
 	"sync"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
+	types2 "github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/protobuf"
 	"github.com/pkg/errors"
 )
@@ -239,4 +242,30 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 	log.Info("Received a message")
 
 	return ptr.Message, msg.Protocol, nil
+}
+
+// TODO:
+// only use for block and tx msg
+func (c *Connection) SendBlock(block types2.Block) error {
+	bbytes, err := json.Marshal(block)
+	if err != nil {
+		return err
+	}
+	newBlockMsg := &chain.DataMsg{
+		Data: [][]byte{bbytes},
+	}
+	msg := chain.NewMessage(chain.Message_NEW_BLOCK, newBlockMsg)
+	return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+}
+
+func (c *Connection) SendTxs(transactions types2.Transactions) error {
+	txsBytes, err := json.Marshal(transactions)
+	if err != nil {
+		return err
+	}
+	transactionsMsg := &chain.DataMsg{
+		Data: [][]byte{txsBytes},
+	}
+	msg := chain.NewMessage(chain.Message_TRANSACTIONS, transactionsMsg)
+	return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
 }
