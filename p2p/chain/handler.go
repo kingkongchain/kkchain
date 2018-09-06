@@ -198,7 +198,7 @@ func (c *Chain) handleBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) 
 	}
 
 	for _, bbytes := range msg.Data {
-		body := new(*types.Body)
+		body := new(types.Body)
 		err = json.Unmarshal(bbytes, body)
 		if err != nil {
 			log.Error("failed to unmarshal bytes to block body")
@@ -221,7 +221,7 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 	}
 
 	for _, hbytes := range msg.Data {
-		header := new(*types.Header)
+		header := new(types.Header)
 		err = json.Unmarshal(hbytes, header)
 		if err != nil {
 			log.Error("failed to unmarshal bytes to block header")
