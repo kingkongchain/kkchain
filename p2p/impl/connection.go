@@ -3,13 +3,17 @@ package impl
 import (
 	"bufio"
 	"encoding/binary"
+	"encoding/json"
 	"io"
 	"net"
 	"sync"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/gogo/protobuf/types"
+	"github.com/invin/kkchain/common"
+	types2 "github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/protobuf"
 	"github.com/pkg/errors"
 )
@@ -239,4 +243,34 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 	log.Info("Received a message")
 
 	return ptr.Message, msg.Protocol, nil
+}
+
+// TODO:
+// only use for chain request
+func (c *Connection) SendBlock(block types2.Block) error {
+	return sendChainMsg(c, chain.Message_NEW_BLOCK, block)
+}
+
+func (c *Connection) SendTxs(transactions types2.Transactions) error {
+	return sendChainMsg(c, chain.Message_TRANSACTIONS, transactions)
+}
+
+func (c *Connection) RequestReceipts(blockHashes []common.Hash) error {
+	return sendChainMsg(c, chain.Message_GET_RECEIPTS, blockHashes)
+}
+
+func (c *Connection) RequestBlockBodies(receiptHashes []common.Hash) error {
+	return sendChainMsg(c, chain.Message_GET_BLOCK_BODIES, receiptHashes)
+}
+
+func sendChainMsg(c *Connection, msgType chain.Message_Type, data interface{}) error {
+	cbytes, err := json.Marshal(data)
+	if err != nil {
+		return err
+	}
+	newMsg := &chain.DataMsg{
+		Data: [][]byte{cbytes},
+	}
+	msg := chain.NewMessage(msgType, newMsg)
+	return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
 }

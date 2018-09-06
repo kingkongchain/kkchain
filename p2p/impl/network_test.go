@@ -5,11 +5,10 @@ import (
 	"time"
 	// "encoding/hex"
 
-	"github.com/invin/kkchain/p2p"
-	"github.com/invin/kkchain/crypto/ed25519"
 	"github.com/invin/kkchain/crypto/blake2b"
+	"github.com/invin/kkchain/crypto/ed25519"
+	"github.com/invin/kkchain/p2p"
 )
-
 
 func TestStartStopNetwork(t *testing.T) {
 	config := p2p.Config{
@@ -19,18 +18,18 @@ func TestStartStopNetwork(t *testing.T) {
 
 	listen := "/ip4/127.0.0.1/tcp/9999"
 
-	net := NewNetwork("", listen, config)
+	net := NewNetwork("", listen, config, nil)
 
 	if err := net.Start(); err != nil {
 		t.Fatal("failed to start network")
 	}
 
-	<- time.After(3*time.Second)
+	<-time.After(3 * time.Second)
 
 	net.Stop()
 
 	t.Log("network stopped")
-	
+
 	// peerPort := "9999"
 	// if *port == "9999" {
 	// 	peerPort = "9998"
@@ -43,4 +42,4 @@ func TestStartStopNetwork(t *testing.T) {
 	// 	net.BootstrapNodes = []string{node}
 	// }
 
-}	
+}

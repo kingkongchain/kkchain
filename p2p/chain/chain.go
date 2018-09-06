@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/p2p"
 	"github.com/op/go-logging"
 )
@@ -18,12 +19,15 @@ var log = logging.MustGetLogger("p2p/chain")
 type Chain struct {
 	// self
 	host p2p.Host
+
+	blockchain *core.BlockChain
 }
 
 // New creates a new Chain object
-func New(host p2p.Host) *Chain {
+func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	c := &Chain{
-		host: host,
+		host:       host,
+		blockchain: bc,
 	}
 
 	if err := host.SetMessageHandler(protocolChain, c.handleMessage); err != nil {
@@ -33,6 +37,10 @@ func New(host p2p.Host) *Chain {
 	host.Register(c)
 
 	return c
+}
+
+func (c *Chain) GetBlockChain() *core.BlockChain {
+	return c.blockchain
 }
 
 // handleMessage handles messages within the stream
@@ -67,6 +75,9 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 	// if nil response, return it before serializing
 	if rpmes == nil {
 		log.Warning("got back nil response from request")
+		if err != nil {
+			log.Error("failed to make response for request,error: %v", err)
+		}
 		return
 	}
 
@@ -79,14 +90,17 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 }
 
 func (c *Chain) Connected(conn p2p.Conn) {
+	if existConn, _ := c.host.Connection(conn.RemotePeer()); existConn != nil {
+		return
+	}
 	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
 
-	// TODO: get current chain info
-	chainID := uint64(1)
-	td := []byte("12345678")
-	currentBlockHash := []byte("0xgjkhfjkgfdfjkjksg")
-	currentBlockNum := uint64(250)
-	genesisBlockHash := []byte("0xgjkhfjkgfdfjkjksg")
+	currentBlock := c.blockchain.CurrentBlock()
+	chainID := c.blockchain.ChainID()
+	td := currentBlock.DeprecatedTd().Bytes()
+	currentBlockHash := currentBlock.Hash().Bytes()
+	currentBlockNum := currentBlock.NumberU64()
+	genesisBlockHash := c.blockchain.GenesisBlock().Hash().Bytes()
 
 	chainMsg := &ChainStatusMsg{
 		ChainID:          chainID,
