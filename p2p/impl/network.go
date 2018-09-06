@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/chain"
@@ -41,10 +42,12 @@ type Network struct {
 
 	// process to manager other child processes
 	proc goprocess.Process
+
+	bc *core.BlockChain
 }
 
 // NewNetwork creates a new Network instance with the specified configuration
-func NewNetwork(privateKeyPath, address string, conf p2p.Config) *Network {
+func NewNetwork(privateKeyPath, address string, conf p2p.Config, bc *core.BlockChain) *Network {
 	keys, _ := p2p.LoadNodeKeyFromFileOrCreateNew(privateKeyPath)
 	id := p2p.CreateID(address, keys.PublicKey)
 
@@ -52,12 +55,13 @@ func NewNetwork(privateKeyPath, address string, conf p2p.Config) *Network {
 		conf:       conf,
 		keys:       keys,
 		listenAddr: address,
+		bc:         bc,
 	}
 
 	n.host = NewHost(id, n)
 
 	// Create submodules
-	n.chain = chain.New(n.host)
+	n.chain = chain.New(n.host, n.bc)
 	n.dht = dht.New(dht.DefaultConfig(), n, n.host)
 
 	return n

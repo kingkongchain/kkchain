@@ -40,7 +40,7 @@ func main() {
 
 	listen := "/ip4/127.0.0.1/tcp/" + *port
 
-	net := impl.NewNetwork(*keypath, listen, config)
+	net := impl.NewNetwork(*keypath, listen, config, nil)
 	seconds := time.Duration(*sec)
 
 	if *port != "9998" {

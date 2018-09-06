@@ -24,9 +24,10 @@ type Chain struct {
 }
 
 // New creates a new Chain object
-func New(host p2p.Host) *Chain {
+func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	c := &Chain{
-		host: host,
+		host:       host,
+		blockchain: bc,
 	}
 
 	if err := host.SetMessageHandler(protocolChain, c.handleMessage); err != nil {
@@ -36,6 +37,10 @@ func New(host p2p.Host) *Chain {
 	host.Register(c)
 
 	return c
+}
+
+func (c *Chain) GetBlockChain() *core.BlockChain {
+	return c.blockchain
 }
 
 // handleMessage handles messages within the stream
