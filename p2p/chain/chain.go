@@ -3,6 +3,8 @@ package chain
 import (
 	"context"
 
+	"math/big"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/p2p"
@@ -90,14 +92,16 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 }
 
 func (c *Chain) Connected(conn p2p.Conn) {
-	if existConn, _ := c.host.Connection(conn.RemotePeer()); existConn != nil {
+	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
+	currentBlock := c.blockchain.CurrentBlock()
+	if currentBlock == nil {
+		log.Warning("local chain current block is nil")
 		return
 	}
-	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
-
-	currentBlock := c.blockchain.CurrentBlock()
 	chainID := c.blockchain.ChainID()
-	td := currentBlock.DeprecatedTd().Bytes()
+
+	// TODO: retrive local current block td
+	td := new(big.Int).Bytes()
 	currentBlockHash := currentBlock.Hash().Bytes()
 	currentBlockNum := currentBlock.NumberU64()
 	genesisBlockHash := c.blockchain.GenesisBlock().Hash().Bytes()

@@ -10,6 +10,8 @@ import (
 
 	"encoding/hex"
 
+	"math/big"
+
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
@@ -54,7 +56,9 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 	fmt.Println("接收到chain status消息：%v", pmes.String())
 	localChainID := c.blockchain.ChainID()
 	currentBlock := c.blockchain.CurrentBlock()
-	localChainTD := currentBlock.DeprecatedTd().Bytes()
+
+	// TODO: retrive local current block td
+	localChainTD := new(big.Int).Bytes()
 	localChainCurrentBlockHash := currentBlock.Hash().Bytes()
 	localChainCurrentBlockNum := currentBlock.NumberU64()
 	localChainGenesisBlock := c.blockchain.GenesisBlock().Hash().Bytes()
@@ -198,7 +202,7 @@ func (c *Chain) handleBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) 
 	}
 
 	for _, bbytes := range msg.Data {
-		body := new(*types.Body)
+		body := new(types.Body)
 		err = json.Unmarshal(bbytes, body)
 		if err != nil {
 			log.Error("failed to unmarshal bytes to block body")
@@ -221,7 +225,7 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 	}
 
 	for _, hbytes := range msg.Data {
-		header := new(*types.Header)
+		header := new(types.Header)
 		err = json.Unmarshal(hbytes, header)
 		if err != nil {
 			log.Error("failed to unmarshal bytes to block header")
