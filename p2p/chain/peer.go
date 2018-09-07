@@ -1,4 +1,4 @@
-package blockchain
+package chain
 
 import (
 	"errors"
@@ -12,8 +12,7 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
-	"github.com/invin/kkchain/p2p/chain"
-	log "github.com/sirupsen/logrus"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -77,7 +76,7 @@ func (p *peer) broadcast() {
 		select {
 		case txs := <-p.queuedTxs:
 			if err := p.SendTransactions(txs); err != nil {
-				log.WithFields(log.Fields{
+				logrus.WithFields(logrus.Fields{
 					"tx_count": len(txs),
 					"error":    err,
 				}).Error("failed to broadcast txs")
@@ -85,7 +84,7 @@ func (p *peer) broadcast() {
 			}
 		case blockhashes := <-p.queuedAnns:
 			if err := p.SendNewBlockHashes(blockhashes); err != nil {
-				log.WithFields(log.Fields{
+				logrus.WithFields(logrus.Fields{
 					"hash_count": len(blockhashes),
 					"error":      err,
 				}).Error("failed to broadcast block hashes")
@@ -93,7 +92,7 @@ func (p *peer) broadcast() {
 			}
 		case block := <-p.queuedProps:
 			if err := p.SendNewBlock(block); err != nil {
-				log.WithFields(log.Fields{
+				logrus.WithFields(logrus.Fields{
 					"block_num": block.NumberU64(),
 					"error":     err,
 				}).Error("failed to broadcast new block")
@@ -139,19 +138,19 @@ func (p *peer) SendTransactions(txs []*types.Transaction) error {
 	for _, tx := range txs {
 		p.knownTxs.Add(tx.Hash())
 	}
-	return p.conn.SendChainMsg(int32(chain.Message_TRANSACTIONS), txs)
+	return p.conn.SendChainMsg(int32(Message_TRANSACTIONS), txs)
 }
 
 func (p *peer) SendNewBlockHashes(hashes []common.Hash) error {
 	for _, hash := range hashes {
 		p.knownBlocks.Add(hash)
 	}
-	return p.conn.SendChainMsg(int32(chain.Message_NEW_BLOCK_HASHS), hashes)
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK_HASHS), hashes)
 }
 
 func (p *peer) SendNewBlock(block *types.Block) error {
 	p.knownBlocks.Add(block.Hash())
-	return p.conn.SendChainMsg(int32(chain.Message_NEW_BLOCK), block)
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), block)
 }
 
 type PeerSet struct {

@@ -6,8 +6,6 @@ import (
 	"math/big"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/invin/kkchain/blockchain"
-	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/p2p"
 	"github.com/op/go-logging"
@@ -25,7 +23,7 @@ type Chain struct {
 	host p2p.Host
 
 	// use to manager broadcasting for remote
-	ps *blockchain.PeerSet
+	ps *PeerSet
 
 	blockchain *core.BlockChain
 }
@@ -35,7 +33,7 @@ func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	c := &Chain{
 		host:       host,
 		blockchain: bc,
-		ps:         blockchain.NewPeerSet(),
+		ps:         NewPeerSet(),
 	}
 
 	if err := host.SetMessageHandler(protocolChain, c.handleMessage); err != nil {
@@ -100,7 +98,7 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 func (c *Chain) Connected(conn p2p.Conn) {
 
 	// create a peer with this conn, and register
-	peer := consensus.NewPeer(conn)
+	peer := NewPeer(conn)
 	c.ps.Register(peer)
 
 	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
