@@ -66,6 +66,8 @@ type Conn interface {
 
 	// Set verified
 	SetVerified()
+
+	SendChainMsg(msgType int32, data interface{}) error
 }
 
 // Notifiee is an interface for an object wishing to receive
