@@ -22,6 +22,9 @@ type Chain struct {
 	// self
 	host p2p.Host
 
+	// use to manager broadcasting for remote
+	ps *PeerSet
+
 	blockchain *core.BlockChain
 }
 
@@ -30,6 +33,7 @@ func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	c := &Chain{
 		host:       host,
 		blockchain: bc,
+		ps:         NewPeerSet(),
 	}
 
 	if err := host.SetMessageHandler(protocolChain, c.handleMessage); err != nil {
@@ -92,6 +96,11 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 }
 
 func (c *Chain) Connected(conn p2p.Conn) {
+
+	// create a peer with this conn, and register
+	peer := NewPeer(conn)
+	c.ps.Register(peer)
+
 	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
 	currentBlock := c.blockchain.CurrentBlock()
 	if currentBlock == nil {
