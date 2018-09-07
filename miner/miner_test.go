@@ -4,6 +4,7 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus/pow"
 	"github.com/invin/kkchain/core"
+	"github.com/invin/kkchain/params"
 	"os"
 	"os/user"
 	"path/filepath"
@@ -28,8 +29,19 @@ func TestMine(t *testing.T) {
 		}
 	}
 
-	chain := core.NewBlockChain()
-	config := pow.Config{
+	config := &core.Config{DataDir: ""}
+
+	chainDb, _ := core.OpenDatabase(config, "chaindata")
+
+	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlock(chainDb, nil)
+	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
+		t.Error("setup genesis failed", genesisErr)
+		return
+	}
+	t.Log("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
+
+	chain, _ := core.NewBlockChain(chainDb)
+	powConfig := pow.Config{
 		CacheDir:       "ethash",
 		CachesInMem:    2,
 		CachesOnDisk:   3,
@@ -39,11 +51,13 @@ func TestMine(t *testing.T) {
 		PowMode:        pow.ModeNormal,
 	}
 
-	logger.Info(config.DatasetDir)
-	engine := pow.New(config, nil)
+	logger.Info(powConfig.DatasetDir)
+	engine := pow.New(powConfig, nil)
 	defer engine.Close()
 
-	miner := New(chain, engine)
+	txpool := core.NewTxPool()
+
+	miner := New(chain, txpool, engine)
 	defer miner.Close()
 
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))

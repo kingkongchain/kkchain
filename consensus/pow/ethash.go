@@ -38,6 +38,7 @@ import (
 
 	"github.com/edsrzf/mmap-go"
 	"github.com/hashicorp/golang-lru/simplelru"
+	logger "github.com/sirupsen/logrus"
 )
 
 var ErrInvalidDumpMagic = errors.New("invalid dump magic")

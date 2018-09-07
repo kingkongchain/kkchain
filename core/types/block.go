@@ -232,7 +232,8 @@ func (b *Block) TxRoot() common.Hash      { return b.header.TxRoot }
 func (b *Block) ReceiptRoot() common.Hash { return b.header.ReceiptRoot }
 func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
 
-func (b *Block) Header() *Header { return CopyHeader(b.header) }
+func (b *Block) Header() *Header            { return CopyHeader(b.header) }
+func (b *Block) HeaderWithoutCopy() *Header { return b.header }
 
 // Body returns the non-header content of the block.
 func (b *Block) Body() *Body { return &Body{b.transactions} }
@@ -269,7 +270,7 @@ func (b *Block) WithSeal(header *Header) *Block {
 }
 
 // WithBody returns a new block with the given transaction and uncle contents.
-func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
+func (b *Block) WithBody(transactions []*Transaction) *Block {
 	block := &Block{
 		header:       CopyHeader(b.header),
 		transactions: make([]*Transaction, len(transactions)),
