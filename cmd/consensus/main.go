@@ -19,6 +19,7 @@ import (
 	"github.com/invin/kkchain/miner"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/impl"
+	"github.com/invin/kkchain/params"
 )
 
 // init config and loggingLoger
@@ -34,7 +35,18 @@ func main() {
 	flag.Parse()
 	seconds := time.Duration(*sec)
 
-	chain := core.NewBlockChain()
+	config := &core.Config{DataDir: ""}
+
+	chainDb, _ := core.OpenDatabase(config, "chaindata")
+
+	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlock(chainDb, nil)
+	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
+		fmt.Printf("setup genesis failed： %s\n", genesisErr)
+		return
+	}
+	fmt.Printf("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
+
+	chain, _ := core.NewBlockChain(chainDb)
 
 	// TODO: start p2p ..
 	doP2P(chain, *port, *keypath)
@@ -95,7 +107,9 @@ func doMiner(chain *core.BlockChain) {
 	engine := pow.New(powconfig, nil)
 	defer engine.Close()
 
-	miner := miner.New(chain, engine)
+	txpool := core.NewTxPool()
+
+	miner := miner.New(chain, txpool, engine)
 	defer miner.Close()
 
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
