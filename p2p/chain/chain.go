@@ -22,6 +22,8 @@ type Chain struct {
 	// self
 	host p2p.Host
 
+	// TODO: add filed peer,use to manager broadcasting for remote
+
 	blockchain *core.BlockChain
 }
 
@@ -92,6 +94,9 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 }
 
 func (c *Chain) Connected(conn p2p.Conn) {
+
+	// TODO: maybe create a peer with this conn, and send status handshake
+
 	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
 	currentBlock := c.blockchain.CurrentBlock()
 	if currentBlock == nil {
