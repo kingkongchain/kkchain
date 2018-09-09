@@ -318,6 +318,7 @@ func (c *Chain) handleReceipts(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 }
 
 func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
+
 	var resp *Message
 	msg := pmes.DataMsg
 	if msg == nil {
@@ -358,20 +359,85 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 }
 
 func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
+
+	log.Info("#####enter into handleNewBlock...")
+	//fmt.Println("接收到new block消息：%v", pmes.String())
+	var resp *Message
 	msg := pmes.DataMsg
 	if msg == nil {
 		return nil, errEmptyMsgContent
 	}
-
 	for _, bbytes := range msg.Data {
-		block := new(*types.Block)
-		err = json.Unmarshal(bbytes, block)
+
+		receiveBlock := new(types.Block)
+		err = json.Unmarshal(bbytes, receiveBlock)
 		if err != nil {
 			log.Error("failed to unmarshal bytes to block")
 			continue
 		}
+		//fmt.Println("反序列化接收到new block里的header消息：%v", receiveBlock.Header())
+		fmt.Println("反序列化接收到new block里的number消息：%v", receiveBlock.Header().Number)
+		fmt.Println("反序列化接收到new block里的hash消息：%v", receiveBlock.Hash().String())
+		fmt.Println("反序列化接收到new block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
+		fmt.Println("反序列化接收到new block里的Difficulty消息：%v", receiveBlock.Difficulty())
+
+		// fmt.Printf(`
+		// 	number: %d
+		// 	{
+		// 		hash: %s
+		// 		parent: %s
+		// 		state: %s
+		// 		diff: 0x%x
+		// 		gaslimit: %d
+		// 		gasused: %d
+		// 		nonce: 0x%x
+		// 	}`+"\n", receiveBlock.Number(), receiveBlock.Hash().String(), receiveBlock.ParentHash().String(), receiveBlock.StateRoot().String(), "00", receiveBlock.GasLimit(), receiveBlock.GasUsed(), receiveBlock.Nonce())
 
 		// TODO: insert received block to local chain
+		//var localCurrentBlock = c.blockchain.CurrentBlock()
+		//	var localCurrentBlockNum = localCurrentBlock.NumberU64()
+		//	var localCurrentBlockHash = localCurrentBlock.Hash()
+		//var localCurrentBlockParentHash = localCurrentBlock.ParentHash()
+		//	var localCurrentBlockTD = rawdb.ReadTd(c.blockchain.GetDb(), localCurrentBlockHash, localCurrentBlockNum)
+
+		//TODO:need to decode msg to get real receive block
+		//var receiveBlockNum = receiveBlock.NumberU64()
+		//var receiveBlockDifficult = receiveBlock.Difficulty()
+		//var receiveBlockHash = receiveBlock.Hash()
+		//var receiveBlockParentHash = receiveBlock.ParentHash()
+		//var receiveBlockTD = receiveBlock.DeprecatedTd()                                   //just for test
+		//var receiveParentBlockTD = new(big.Int).Sub(receiveBlockTD, receiveBlockDifficult) //just for test
+		// remoteBlock.ReceivedAt = msg.ReceivedAt
+		// remoteBlock.ReceivedFrom = p
+
+		//1. validata receive block
+		if err := c.blockchain.Validator().ValidateBody(receiveBlock); err != nil {
+			log.Error("Validator block error:", err)
+			return resp, nil
+		}
+
+		//2.insert block and post Event
+		//TODO:use queue to fetcher block data
+		// broadcase Block
+		//TODO:implement peer broadcast
+		go c.BroadcastBlock(receiveBlock, true)
+		//insert block and post Event
+		c.blockchain.InsertChain([]*types.Block{receiveBlock})
+		// broadcase Block hash
+		go c.BroadcastBlock(receiveBlock, false)
+
+		//3.synchronise data
+		// Update the peers total difficulty if better than the previous
+		//TODO1:set peer head,manager td and block head of peer conn
+		//if _, td := p.Head(); trueTD.Cmp(td) > 0 {
+		//	p.SetHead(trueHead, trueTD)
+		//if receiveParentBlockTD.Cmp(localCurrentBlockTD) > 0 {
+		//TODO2:implement synchronise data
+		//go pm.synchronise(p)
+		//}
+
+		// TODO:
+		return resp, nil
 
 	}
 

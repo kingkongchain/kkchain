@@ -53,6 +53,7 @@ type Engine interface {
 
 	VerifyHeader(header *types.Header) error
 	Verify(block *types.Block) error
+	Close() error
 }
 
 type Network interface {

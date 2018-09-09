@@ -17,6 +17,7 @@ import (
 var (
 	errServerStopped = errors.New("server stopped")
 	log              = logging.MustGetLogger("p2p/impl")
+	MaxPeers         = 1000
 )
 
 // Network represents the whole stack of p2p communication between peers
@@ -92,6 +93,16 @@ func (n *Network) Start() error {
 			log.Info("closing dht")
 			n.dht.Stop()
 			n.host.RemoveAllConnection()
+		}
+	})
+
+	//start txs,block,synce handle  loop as child of network process
+	n.proc.Go(func(p goprocess.Process) {
+		n.chain.Start(MaxPeers)
+		select {
+		case <-p.Closing():
+			log.Info("closing handle loop")
+			n.chain.Stop()
 		}
 	})
 

@@ -53,7 +53,11 @@ type Config struct {
 type BlockChain struct {
 	mu     *sync.RWMutex
 	wg     sync.WaitGroup // chain processing wait group for shutting down
+	procmu sync.RWMutex   // block processor lock
 	config Config
+
+	engine    consensus.Engine
+	validator Validator // block and state validator interface
 
 	db           storage.Database
 	blockCache   *lru.Cache // Cache for the most recent entire blocks
@@ -76,9 +80,15 @@ type BlockChain struct {
 	//for test TODO：move to sync mgr
 	syncStartFeed event.Feed
 	syncDoneFeed  event.Feed
+
+	// TODO: need chain config
+	chainID uint64
+
+	txsFeed      event.Feed
+	newBlockFeed event.Feed
 }
 
-func NewBlockChain(db storage.Database) (*BlockChain, error) {
+func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, error) {
 
 	headerCache, _ := lru.New(headerCacheLimit)
 	blockCache, _ := lru.New(blockCacheLimit)
@@ -95,8 +105,10 @@ func NewBlockChain(db storage.Database) (*BlockChain, error) {
 		numberCache:  numberCache,
 		blockCache:   blockCache,
 		futureBlocks: futureBlocks,
+		engine:       engine,
 	}
 
+	bc.SetValidator(NewBlockValidator(bc))
 	//init genesis block
 	bc.genesisBlock = bc.GetBlockByNumber(0)
 	if bc.genesisBlock == nil {
@@ -112,6 +124,14 @@ func NewBlockChain(db storage.Database) (*BlockChain, error) {
 	//bc.currentBlock.Store(bc.genesisBlock)
 
 	return bc, nil
+}
+
+func (bc *BlockChain) ChainID() uint64 {
+	return bc.chainID
+}
+
+func (bc *BlockChain) GenesisBlock() *types.Block {
+	return bc.genesisBlock
 }
 
 // loadLastState loads the last known chain state from the database. This method
@@ -328,8 +348,9 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	}
 
 	// Write other block data using a batch.
-	batch := bc.db.NewBatch()
-	rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receipts)
+	//TODO:implement writeReceipts
+	//batch := bc.db.NewBatch()
+	//rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receipts)
 
 	// If the total difficulty is higher than our known, add it to the canonical chain
 	// Second clause in the if statement reduces the vulnerability to selfish mining.
@@ -348,14 +369,14 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 			}
 		}
 		// Write the positional metadata for transaction/receipt lookups and preimages
-		rawdb.WriteTxLookupEntries(batch, block)
-		rawdb.WritePreimages(batch, block.NumberU64(), state.Preimages())
+		//rawdb.WriteTxLookupEntries(batch, block)
+		//rawdb.WritePreimages(batch, block.NumberU64(), state.Preimages())
 
 	}
 
-	if err := batch.Write(); err != nil {
-		return err
-	}
+	// if err := batch.Write(); err != nil {
+	// 	return err
+	// }
 
 	// Set new head.
 	bc.insert(block)
@@ -616,6 +637,10 @@ func (bc *BlockChain) GetBlockNumber(hash common.Hash) *uint64 {
 	return number
 }
 
+func (bc *BlockChain) GetReceiptByHash(hash common.Hash) *types.Receipt {
+	return nil
+}
+
 //for test
 func (bc *BlockChain) SubscribeSyncStartEvent(ch chan<- struct{}) event.Subscription {
 	return bc.scope.Track(bc.syncStartFeed.Subscribe(ch))
@@ -647,6 +672,7 @@ func (bc *BlockChain) PostChainEvents(events []interface{}, logs []*types.Log) {
 			bc.chainHeadFeed.Send(ev)
 
 		case NewMinedBlockEvent:
+			log.Info("*******send newMinedBlockFeed")
 			bc.newMinedBlockFeed.Send(ev)
 
 		}
@@ -694,4 +720,98 @@ func encodeBlockNumber(number uint64) []byte {
 //GetDb return  db of blockchain using
 func (bc *BlockChain) GetDb() storage.Database {
 	return bc.db
+}
+
+func (bc *BlockChain) SubscribeTxsEvent(ch chan<- []*types.Transaction) event.Subscription {
+	return bc.scope.Track(bc.txsFeed.Subscribe(ch))
+}
+
+func (bc *BlockChain) PostTxsEvent(txs []*types.Transaction) {
+	bc.txsFeed.Send(txs)
+}
+
+func (bc *BlockChain) SubscribeNewBlockEvent(ch chan<- *types.Block) event.Subscription {
+	return bc.scope.Track(bc.newBlockFeed.Subscribe(ch))
+}
+
+func (bc *BlockChain) PostNewBlockEvent(block *types.Block) {
+	bc.currentBlock.Store(block)
+	bc.newBlockFeed.Send(block)
+}
+
+func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
+	n, events, logs, err := bc.insertChain(chain)
+	bc.PostChainEvents(events, logs)
+	return n, err
+}
+
+func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*types.Log, error) {
+	if len(chain) == 0 {
+		return 0, nil, nil, nil
+	}
+
+	bc.wg.Add(1)
+	defer bc.wg.Done()
+
+	bc.mu.Lock()
+	defer bc.mu.Unlock()
+
+	// A queued approach to delivering events. This is generally
+	// faster than direct delivery and requires much less mutex
+	// acquiring.
+	var (
+		//stats         = insertStats{startTime: mclock.Now()}
+		events        = make([]interface{}, 0, len(chain))
+		lastCanon     *types.Block
+		coalescedLogs []*types.Log
+	)
+	for i, block := range chain {
+		//fmt.Println("########insertChain里的parent：%v", block.Header())
+		// fmt.Println("########insertChain里的parent的number消息：%v", block.Header().Number)
+		// fmt.Println("########insertChain里的parent的hash消息：%v", block.Hash().String())
+		// fmt.Println("########insertChain里的parent的ParentHash消息：%v", block.ParentHash().String())
+		// fmt.Println("########insertChain里的parent的Difficulty消息：%v", block.Difficulty())
+		// fmt.Println("########insertChain里的parent的StateRoot消息：%v", block.StateRoot().String())
+
+		// Write the block to the chain and get the status.
+		//err: = bc.WriteBlockWithState(block, make([]*types.Receipt, 1), state) //receipt is empty just for test
+		err := bc.WriteBlockWithoutState(block)
+		if err != nil {
+			return i, events, coalescedLogs, err
+		}
+		events = append(events, ChainEvent{block, block.Hash(), make([]*types.Log, 1)})
+		lastCanon = block
+	}
+	//TODO：need to implement real TD
+	if lastCanon.Difficulty().Cmp(bc.CurrentBlock().Difficulty()) > 0 {
+		bc.insert(lastCanon)
+	}
+
+	// Append a single chain head event if we've progressed the chain
+	if lastCanon != nil && bc.CurrentBlock().Hash() == lastCanon.Hash() {
+		events = append(events, ChainHeadEvent{lastCanon})
+	}
+	return 0, events, coalescedLogs, nil
+}
+
+func (bc *BlockChain) WriteBlockWithoutState(block *types.Block) (err error) {
+	bc.wg.Add(1)
+	defer bc.wg.Done()
+
+	rawdb.WriteBlock(bc.db, block)
+	return nil
+}
+
+//SetValidator sets the validator which is used to validate incoming blocks.
+func (bc *BlockChain) SetValidator(validator Validator) {
+	bc.procmu.Lock()
+	defer bc.procmu.Unlock()
+	bc.validator = validator
+}
+
+// Validator returns the current validator.
+func (bc *BlockChain) Validator() Validator {
+	bc.procmu.RLock()
+	defer bc.procmu.RUnlock()
+	return bc.validator
 }

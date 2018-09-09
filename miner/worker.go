@@ -189,6 +189,7 @@ func (w *worker) waitResult() {
 
 			events = append(events, core.ChainHeadEvent{Block: block})
 			events = append(events, core.NewMinedBlockEvent{Block: block})
+			log.Info("********Begin PostChainEvents----")
 			w.chain.PostChainEvents(events, logs)
 
 			//

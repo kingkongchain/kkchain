@@ -12,3 +12,7 @@
 *.out
 /vendor/
 /.idea/
+.DS_Store
+.project
+.vscode/
+*.key
