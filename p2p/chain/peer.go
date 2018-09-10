@@ -150,7 +150,38 @@ func (p *peer) SendNewBlockHashes(hashes []common.Hash) error {
 
 func (p *peer) SendNewBlock(block *types.Block) error {
 	p.knownBlocks.Add(block.Hash())
-	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), block)
+	log.Info("@@@@@@@@@SendNewBlock,blocknum:", block.NumberU64(), "hash", block.Hash())
+	fmt.Println("@@@@@@@@@SendNewBlock %v", block)
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), *block)
+}
+
+func (p *peer) AsyncSendNewBlock(block *types.Block) {
+	select {
+	case p.queuedProps <- block:
+		p.knownBlocks.Add(block.Hash())
+	default:
+		log.Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
+	}
+}
+
+func (p *peer) AsyncSendNewBlockHash(hash common.Hash) {
+	select {
+	case p.queuedAnns <- []common.Hash{hash}:
+		p.knownBlocks.Add(hash)
+	default:
+		log.Debug("Dropping block announcement", "hash", hash.String())
+	}
+}
+
+func (p *peer) AsyncSendTransactions(txs []*types.Transaction) {
+	select {
+	case p.queuedTxs <- txs:
+		for _, tx := range txs {
+			p.knownTxs.Add(tx.Hash())
+		}
+	default:
+		log.Debug("Dropping transaction propagation", "count", len(txs))
+	}
 }
 
 type PeerSet struct {

@@ -2,20 +2,33 @@ package miner
 
 import (
 	"fmt"
+	"math/big"
+	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/core"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
-	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
+
+type context struct {
+	state    *state.StateDB // apply state changes here
+	header   *types.Header
+	txs      []*types.Transaction
+	receipts []*types.Receipt
+}
 
 // task contains all information for consensus engine sealing and result submitting.
 type task struct {
 	block     *types.Block
+	receipts  []*types.Receipt
+	state     *state.StateDB
 	createdAt time.Time
 }
 
@@ -30,41 +43,45 @@ type worker struct {
 
 	//TODO: blockchain impl ChainReader interface
 	chain  *core.BlockChain
+	txpool *core.TxPool
 	engine consensus.Engine
 
 	mineLoopCh chan struct{}
 
 	//tx pool add new txs
-	txsCh  chan []*types.Transaction
+	txsCh  chan types.Transactions
 	txsSub event.Subscription
 
 	//new block inserted to chain
-	newBlockCh  chan *types.Block
-	newBlockSub event.Subscription
+	chainHeadCh  chan core.ChainHeadEvent
+	chainHeadSub event.Subscription
+
+	currentCtx *context
 
 	taskCh   chan *task
 	resultCh chan *task
 }
 
-func newWorker(bc *core.BlockChain, engine consensus.Engine) *worker {
+func newWorker(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *worker {
 	w := &worker{
-		startCh:    make(chan struct{}, 1),
-		quitCh:     make(chan struct{}),
-		mu:         &sync.RWMutex{},
-		chain:      bc,
-		engine:     engine,
-		txsCh:      make(chan []*types.Transaction),
-		newBlockCh: make(chan *types.Block),
-		mineLoopCh: make(chan struct{}),
-		taskCh:     make(chan *task),
-		resultCh:   make(chan *task),
+		startCh:     make(chan struct{}, 1),
+		quitCh:      make(chan struct{}),
+		mu:          &sync.RWMutex{},
+		chain:       bc,
+		txpool:      txpool,
+		engine:      engine,
+		txsCh:       make(chan types.Transactions),
+		chainHeadCh: make(chan core.ChainHeadEvent),
+		mineLoopCh:  make(chan struct{}),
+		taskCh:      make(chan *task),
+		resultCh:    make(chan *task),
 	}
 
 	// Subscribe events from tx pool
-	w.txsSub = bc.SubscribeTxsEvent(w.txsCh)
+	w.txsSub = txpool.SubscribeTxsEvent(w.txsCh)
 
 	// Subscribe events from inbound handler
-	w.newBlockSub = bc.SubscribeNewBlockEvent(w.newBlockCh)
+	w.chainHeadSub = bc.SubscribeChainHeadEvent(w.chainHeadCh)
 
 	go w.mineLoop()
 	go w.taskLoop()
@@ -82,7 +99,7 @@ func (w *worker) setMiner(addr common.Address) {
 
 func (w *worker) mineLoop() {
 	defer w.txsSub.Unsubscribe()
-	defer w.newBlockSub.Unsubscribe()
+	defer w.chainHeadSub.Unsubscribe()
 
 	for {
 		select {
@@ -90,7 +107,7 @@ func (w *worker) mineLoop() {
 			for _, tx := range txs {
 				fmt.Println(tx)
 			}
-		case <-w.newBlockCh:
+		case <-w.chainHeadCh:
 			if w.isRunning() {
 				w.commitTask()
 			}
@@ -147,20 +164,37 @@ func (w *worker) waitResult() {
 			if result == nil {
 				continue
 			}
+			block := result.block
 
-			logger.Info("result=> number: %d, nonce: 0x%x", result.block.Number(), result.block.Nonce())
+			w.blockinfo(block)
 
 			// Short circuit when receiving duplicate result caused by resubmitting.
-
+			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
+				continue
+			}
 			// Update the block hash in all logs since it is now available and not when the
 			// receipt/log of individual transactions were created.
 
 			// Commit block and state to database.
-
+			err := w.chain.WriteBlockWithState(block, result.receipts, result.state)
+			if err != nil {
+				log.Error("Failed writing block to chain", "err", err)
+				continue
+			}
 			// Broadcast the block and announce chain insertion event
+			var (
+				events []interface{}
+				logs   []*types.Log
+			)
 
-			//trigger next mine loop
-			w.chain.PostNewBlockEvent(result.block)
+			events = append(events, core.ChainHeadEvent{Block: block})
+			events = append(events, core.NewMinedBlockEvent{Block: block})
+			log.Info("********Begin PostChainEvents----")
+			w.chain.PostChainEvents(events, logs)
+
+			//
+			w.engine.PostExecute(w.chain, block)
+
 		case <-w.quitCh:
 			return
 
@@ -176,14 +210,71 @@ func (w *worker) commitTask() {
 		return
 	}
 
-	//get txs from pending pool
-	txs := []types.Transaction{}
+	tstart := time.Now()
+	parent := w.chain.CurrentBlock()
 
-	//Initialize ctx
-	block, _ := w.engine.Initialize(w.chain, txs)
+	tstamp := tstart.Unix()
+	if parent.Time().Cmp(new(big.Int).SetInt64(tstamp)) >= 0 {
+		tstamp = parent.Time().Int64() + 1
+	}
+	// this will ensure we're not going off too far in the future
+	if now := time.Now().Unix(); tstamp > now+1 {
+		wait := time.Duration(tstamp-now) * time.Second
+		log.Info("Mining too far in the future", "wait", wait)
+		time.Sleep(wait)
+	}
+
+	num := parent.Number()
+	header := &types.Header{
+		ParentHash: parent.Hash(),
+		Number:     num.Add(num, common.Big1),
+		Time:       big.NewInt(tstamp),
+		Miner:      w.miner,
+		GasLimit:   CalcGasLimit(parent),
+	}
+
+	// Could potentially happen if starting to mine in an odd state.
+	err := w.currentContext(parent, header)
+	if err != nil {
+		log.Error("Failed to create mining context", "err", err)
+		return
+	}
+
+	//Initialize
+	err = w.engine.Initialize(w.chain, header)
+	if err == consensus.ErrNotProposer {
+		//not proposer, just wait block coming
+		w.taskCh <- &task{block: types.NewBlock(header, nil, nil), createdAt: time.Now()}
+		return
+	}
+
+	//get txs from pending pool
+	pending, count, _ := w.txpool.Pending()
+	txs := make(types.Transactions, 0, count)
+	for _, acctxs := range pending {
+		for _, tx := range acctxs {
+			txs = append(txs, tx)
+		}
+	}
+
+	//apply txs and get block TODO: commit txs and apply
+	// Deep copy receipts here to avoid interaction between different tasks.
+	receipts := make([]*types.Receipt, len(w.currentCtx.receipts))
+	for i, l := range w.currentCtx.receipts {
+		receipts[i] = new(types.Receipt)
+		*receipts[i] = *l
+	}
+	block := types.NewBlock(header, txs, receipts)
+
+	//finalize block before consensus
+	s := w.currentCtx.state.Copy()
+	err = w.engine.Finalize(w.chain, s, block)
+	if err != nil {
+		return
+	}
 
 	//commit new task
-	w.taskCh <- &task{block: block, createdAt: time.Now()}
+	w.taskCh <- &task{block: block, state: s, receipts: receipts, createdAt: time.Now()}
 
 }
 
@@ -240,4 +331,71 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 	case w.resultCh <- res:
 	case <-w.quitCh:
 	}
+}
+
+func (w *worker) currentContext(parent *types.Block, header *types.Header) error {
+	state, err := w.chain.StateAt(parent.StateRoot())
+	if err != nil {
+		return err
+	}
+	ctx := &context{
+		state:  state,
+		header: header,
+	}
+
+	// Keep track of transactions which return errors so they can be removed
+	w.currentCtx = ctx
+	return nil
+}
+
+func (w *worker) blockinfo(block *types.Block) {
+
+	fmt.Printf(`new block mined!!! =====>
+	number: %d 
+	{
+		hash: %s
+		parent: %s
+		state: %s
+		diff: 0x%x
+		gaslimit: %d
+		gasused: %d
+		nonce: 0x%x
+	}`+"\n", block.Number(), block.Hash().String(), block.ParentHash().String(), block.StateRoot().String(), block.Difficulty(), block.GasLimit(), block.GasUsed(), block.Nonce())
+}
+
+var (
+	GasLimitBoundDivisor uint64 = 1024                 // The bound divisor of the gas limit, used in update calculations.
+	MinGasLimit          uint64 = 5000                 // Minimum the gas limit may ever be.
+	TargetGasLimit              = core.GenesisGasLimit // The artificial target
+)
+
+// CalcGasLimit computes the gas limit of the next block after parent.
+// This is miner strategy, not consensus protocol.
+func CalcGasLimit(parent *types.Block) uint64 {
+	// contrib = (parentGasUsed * 3 / 2) / 1024
+	contrib := (parent.GasUsed() + parent.GasUsed()/2) / GasLimitBoundDivisor
+
+	// decay = parentGasLimit / 1024 -1
+	decay := parent.GasLimit()/GasLimitBoundDivisor - 1
+
+	/*
+		strategy: gasLimit of block-to-mine is set based on parent's
+		gasUsed value.  if parentGasUsed > parentGasLimit * (2/3) then we
+		increase it, otherwise lower it (or leave it unchanged if it's right
+		at that usage) the amount increased/decreased depends on how far away
+		from parentGasLimit * (2/3) parentGasUsed is.
+	*/
+	limit := parent.GasLimit() - decay + contrib
+	if limit < MinGasLimit {
+		limit = MinGasLimit
+	}
+	// however, if we're now below the target (TargetGasLimit) we increase the
+	// limit as much as we can (parentGasLimit / 1024 -1)
+	if limit < TargetGasLimit {
+		limit = parent.GasLimit() + decay
+		if limit > TargetGasLimit {
+			limit = TargetGasLimit
+		}
+	}
+	return limit
 }

@@ -31,6 +31,8 @@ import (
 	"github.com/invin/kkchain/common/bitutil"
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/crypto/sha3"
+
+	logger "github.com/sirupsen/logrus"
 )
 
 const (

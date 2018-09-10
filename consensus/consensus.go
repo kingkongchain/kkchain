@@ -2,6 +2,7 @@ package consensus
 
 import (
 	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 )
 
@@ -44,14 +45,15 @@ type ChainReader interface {
 
 // Engine is an algorithm agnostic consensus engine.
 type Engine interface {
-	Initialize(chain ChainReader, txs []types.Transaction) (*types.Block, error)
+	Initialize(chain ChainReader, header *types.Header) error
+	Finalize(chain ChainReader, state *state.StateDB, block *types.Block) error
 
 	Execute(chain ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error)
-
-	Finalize(chain ChainReader, block *types.Block) error
+	PostExecute(chain ChainReader, block *types.Block) error
 
 	VerifyHeader(header *types.Header) error
 	Verify(block *types.Block) error
+	Close() error
 }
 
 type Network interface {

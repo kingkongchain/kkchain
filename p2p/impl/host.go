@@ -161,16 +161,16 @@ func (h *Host) AddConnection(id p2p.ID, conn p2p.Conn) error {
 	publicKey := string(id.PublicKey)
 	_, found := h.connections[publicKey]
 
-	if found {
-		return errDuplicateConnection
+	//return errDuplicateConnection
+	if !found {
+		h.connections[publicKey] = conn
+
+		// notify a new connection
+		h.notifyAll(func(n p2p.Notifiee) {
+			n.Connected(conn)
+		})
+
 	}
-
-	h.connections[publicKey] = conn
-
-	// notify a new connection
-	h.notifyAll(func(n p2p.Notifiee) {
-		n.Connected(conn)
-	})
 
 	return nil
 }

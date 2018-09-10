@@ -33,12 +33,12 @@ type Miner struct {
 	syncDoneSub event.Subscription
 }
 
-func New(bc *core.BlockChain, engine consensus.Engine) *Miner {
+func New(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *Miner {
 	miner := &Miner{
 		quitCh:      make(chan struct{}),
 		syncStartCh: make(chan struct{}),
 		syncDoneCh:  make(chan struct{}),
-		worker:      newWorker(bc, engine),
+		worker:      newWorker(bc, txpool, engine),
 		chain:       bc,
 	}
 

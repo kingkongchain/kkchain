@@ -93,8 +93,8 @@ type Body struct {
 }
 
 type Block struct {
-	header       *Header
-	transactions Transactions
+	Head *Header
+	Txs  Transactions
 
 	// caches
 	hash atomic.Value
@@ -102,7 +102,7 @@ type Block struct {
 
 	// Td is used by package core to store the total difficulty
 	// of the chain up to and including the block.
-	td *big.Int
+	Td *big.Int
 
 	// These fields are used by package eth to track
 	// inter-peer block relay.
@@ -114,41 +114,41 @@ type StorageBlock Block
 
 // "external" block encoding. used for protocol, etc.
 type extblock struct {
-	Header *Header
-	Txs    []*Transaction
+	Head *Header
+	Txs  []*Transaction
 }
 
 // "storage" block encoding. used for database.
 type storageblock struct {
-	Header *Header
-	Txs    []*Transaction
-	TD     *big.Int
+	Head *Header
+	Txs  []*Transaction
+	TD   *big.Int
 }
 
 func NewBlock(header *Header, txs []*Transaction, receipts []*Receipt) *Block {
-	b := &Block{header: CopyHeader(header), td: new(big.Int)}
+	b := &Block{Head: CopyHeader(header), Td: new(big.Int)}
 
 	// TODO: panic if len(txs) != len(receipts)
 	if len(txs) == 0 {
-		b.header.TxRoot = EmptyRootHash
+		b.Head.TxRoot = EmptyRootHash
 	} else {
-		b.header.TxRoot = DeriveSha(Transactions(txs))
-		b.transactions = make(Transactions, len(txs))
-		copy(b.transactions, txs)
+		b.Head.TxRoot = DeriveSha(Transactions(txs))
+		b.Txs = make(Transactions, len(txs))
+		copy(b.Txs, txs)
 	}
 
 	if len(receipts) == 0 {
-		b.header.ReceiptRoot = EmptyRootHash
+		b.Head.ReceiptRoot = EmptyRootHash
 	} else {
-		b.header.ReceiptRoot = DeriveSha(Receipts(receipts))
-		b.header.Bloom = CreateBloom(receipts)
+		b.Head.ReceiptRoot = DeriveSha(Receipts(receipts))
+		b.Head.Bloom = CreateBloom(receipts)
 	}
 
 	return b
 }
 
 func NewBlockWithHeader(header *Header) *Block {
-	return &Block{header: CopyHeader(header)}
+	return &Block{Head: CopyHeader(header)}
 }
 
 func CopyHeader(h *Header) *Header {
@@ -173,7 +173,7 @@ func CopyHeader(h *Header) *Header {
 // code solely to facilitate upgrading the database from the old format to the
 // new, after which it should be deleted. Do not use!
 func (b *Block) DeprecatedTd() *big.Int {
-	return b.td
+	return b.Td
 }
 
 func (b *Block) DecodeRLP(s *rlp.Stream) error {
@@ -182,7 +182,7 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 	if err := s.Decode(&eb); err != nil {
 		return err
 	}
-	b.header, b.transactions = eb.Header, eb.Txs
+	b.Head, b.Txs = eb.Head, eb.Txs
 	b.size.Store(common.StorageSize(rlp.ListSize(size)))
 	return nil
 }
@@ -190,8 +190,8 @@ func (b *Block) DecodeRLP(s *rlp.Stream) error {
 // EncodeRLP serializes b into RLP block format.
 func (b *Block) EncodeRLP(w io.Writer) error {
 	return rlp.Encode(w, extblock{
-		Header: b.header,
-		Txs:    b.transactions,
+		Head: b.Head,
+		Txs:  b.Txs,
 	})
 }
 
@@ -200,14 +200,14 @@ func (b *StorageBlock) DecodeRLP(s *rlp.Stream) error {
 	if err := s.Decode(&sb); err != nil {
 		return err
 	}
-	b.header, b.transactions, b.td = sb.Header, sb.Txs, sb.TD
+	b.Head, b.Txs, b.Td = sb.Head, sb.Txs, sb.TD
 	return nil
 }
 
-func (b *Block) Transactions() Transactions { return b.transactions }
+func (b *Block) Transactions() Transactions { return b.Txs }
 
 func (b *Block) Transaction(hash common.Hash) *Transaction {
-	for _, transaction := range b.transactions {
+	for _, transaction := range b.Txs {
 		if transaction.Hash() == hash {
 			return transaction
 		}
@@ -215,30 +215,31 @@ func (b *Block) Transaction(hash common.Hash) *Transaction {
 	return nil
 }
 
-func (b *Block) Number() *big.Int     { return new(big.Int).Set(b.header.Number) }
-func (b *Block) GasLimit() uint64     { return b.header.GasLimit }
-func (b *Block) GasUsed() uint64      { return b.header.GasUsed }
-func (b *Block) Difficulty() *big.Int { return new(big.Int).Set(b.header.Difficulty) }
-func (b *Block) Time() *big.Int       { return new(big.Int).Set(b.header.Time) }
+func (b *Block) Number() *big.Int     { return new(big.Int).Set(b.Head.Number) }
+func (b *Block) GasLimit() uint64     { return b.Head.GasLimit }
+func (b *Block) GasUsed() uint64      { return b.Head.GasUsed }
+func (b *Block) Difficulty() *big.Int { return new(big.Int).Set(b.Head.Difficulty) }
+func (b *Block) Time() *big.Int       { return new(big.Int).Set(b.Head.Time) }
 
-func (b *Block) NumberU64() uint64        { return b.header.Number.Uint64() }
-func (b *Block) MixDigest() common.Hash   { return b.header.MixDigest }
-func (b *Block) Nonce() uint64            { return binary.BigEndian.Uint64(b.header.Nonce[:]) }
-func (b *Block) Bloom() Bloom             { return b.header.Bloom }
-func (b *Block) Miner() common.Address    { return b.header.Miner }
-func (b *Block) StateRoot() common.Hash   { return b.header.StateRoot }
-func (b *Block) ParentHash() common.Hash  { return b.header.ParentHash }
-func (b *Block) TxRoot() common.Hash      { return b.header.TxRoot }
-func (b *Block) ReceiptRoot() common.Hash { return b.header.ReceiptRoot }
-func (b *Block) Extra() []byte            { return common.CopyBytes(b.header.Extra) }
+func (b *Block) NumberU64() uint64        { return b.Head.Number.Uint64() }
+func (b *Block) MixDigest() common.Hash   { return b.Head.MixDigest }
+func (b *Block) Nonce() uint64            { return binary.BigEndian.Uint64(b.Head.Nonce[:]) }
+func (b *Block) Bloom() Bloom             { return b.Head.Bloom }
+func (b *Block) Miner() common.Address    { return b.Head.Miner }
+func (b *Block) StateRoot() common.Hash   { return b.Head.StateRoot }
+func (b *Block) ParentHash() common.Hash  { return b.Head.ParentHash }
+func (b *Block) TxRoot() common.Hash      { return b.Head.TxRoot }
+func (b *Block) ReceiptRoot() common.Hash { return b.Head.ReceiptRoot }
+func (b *Block) Extra() []byte            { return common.CopyBytes(b.Head.Extra) }
 
-func (b *Block) Header() *Header { return CopyHeader(b.header) }
+func (b *Block) Header() *Header            { return CopyHeader(b.Head) }
+func (b *Block) HeaderWithoutCopy() *Header { return b.Head }
 
 // Body returns the non-header content of the block.
-func (b *Block) Body() *Body { return &Body{b.transactions} }
+func (b *Block) Body() *Body { return &Body{b.Txs} }
 
 func (b *Block) HashNoNonce() common.Hash {
-	return b.header.HashNoNonce()
+	return b.Head.HashNoNonce()
 }
 
 // Size returns the true RLP encoded storage size of the block, either by encoding
@@ -263,18 +264,18 @@ func (c *writeCounter) Write(b []byte) (int, error) {
 func (b *Block) WithSeal(header *Header) *Block {
 	cpy := *header
 	return &Block{
-		header:       &cpy,
-		transactions: b.transactions,
+		Head: &cpy,
+		Txs:  b.Txs,
 	}
 }
 
 // WithBody returns a new block with the given transaction and uncle contents.
-func (b *Block) WithBody(transactions []*Transaction, uncles []*Header) *Block {
+func (b *Block) WithBody(transactions []*Transaction) *Block {
 	block := &Block{
-		header:       CopyHeader(b.header),
-		transactions: make([]*Transaction, len(transactions)),
+		Head: CopyHeader(b.Head),
+		Txs:  make([]*Transaction, len(transactions)),
 	}
-	copy(block.transactions, transactions)
+	copy(block.Txs, transactions)
 	return block
 }
 
@@ -283,7 +284,7 @@ func (b *Block) Hash() common.Hash {
 	if hash := b.hash.Load(); hash != nil {
 		return hash.(common.Hash)
 	}
-	v := b.header.Hash()
+	v := b.Head.Hash()
 	b.hash.Store(v)
 	return v
 }
@@ -311,4 +312,4 @@ func (self blockSorter) Swap(i, j int) {
 }
 func (self blockSorter) Less(i, j int) bool { return self.by(self.blocks[i], self.blocks[j]) }
 
-func Number(b1, b2 *Block) bool { return b1.header.Number.Cmp(b2.header.Number) < 0 }
+func Number(b1, b2 *Block) bool { return b1.Head.Number.Cmp(b2.Head.Number) < 0 }

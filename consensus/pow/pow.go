@@ -7,54 +7,46 @@ import (
 	"math/rand"
 	"runtime"
 	"sync"
-	"time"
 
 	"github.com/invin/kkchain/common"
 	cmath "github.com/invin/kkchain/common/math"
 	"github.com/invin/kkchain/consensus"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
-	logger = logging.MustGetLogger("Ethash")
+	FrontierBlockReward *big.Int = big.NewInt(5e+18) // Block reward in wei for successfully mining a block
+
 )
 
-func (ethash *Ethash) Initialize(chain consensus.ChainReader, txs []types.Transaction) (*types.Block, error) {
-	tstart := time.Now()
-	parent := chain.CurrentHeader()
-
-	tstamp := tstart.Unix()
-	if parent.Time.Cmp(new(big.Int).SetInt64(tstamp)) >= 0 {
-		tstamp = parent.Time.Int64() + 1
-	}
-	// this will ensure we're not going off too far in the future
-	if now := time.Now().Unix(); tstamp > now+1 {
-		wait := time.Duration(tstamp-now) * time.Second
-		logger.Info("Mining too far in the future", "wait", wait)
-		time.Sleep(wait)
-	}
-
-	num := parent.Number
-	header := &types.Header{
-		ParentHash: parent.Hash(),
-		Number:     num.Add(num, common.Big1),
-		Extra:      []byte("123"),
-		Time:       big.NewInt(tstamp),
-		//Miner:      miner,
+func (ethash *Ethash) Initialize(chain consensus.ChainReader, header *types.Header) error {
+	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
 	}
 
 	header.Difficulty = calcDifficultyFrontier(header.Time.Uint64(), parent)
+	return nil
+}
 
-	return types.NewBlock(header, nil, nil), nil
+func (ethash *Ethash) Finalize(chain consensus.ChainReader, state *state.StateDB, block *types.Block) error {
+	header := block.HeaderWithoutCopy()
+	// Accumulate any block and uncle rewards and commit the final state root
+	accumulateRewards(state, header)
+
+	header.StateRoot = state.IntermediateRoot(false)
+
+	return nil
 }
 
 func (ethash *Ethash) Execute(chain consensus.ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error) {
 	return ethash.Seal(chain, block, stop)
 }
 
-func (ethash *Ethash) Finalize(chain consensus.ChainReader, block *types.Block) error {
+func (ethash *Ethash) PostExecute(chain consensus.ChainReader, block *types.Block) error {
 	return nil
 }
 
@@ -148,13 +140,13 @@ func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan s
 		nonce    = seed
 	)
 	//logger := log.New("miner", id)
-	logger.Debug("Started ethash search for new nonces", "seed", seed)
+	log.Debug("Started ethash search for new nonces", "seed", seed)
 search:
 	for {
 		select {
 		case <-abort:
 			// Mining terminated, update stats and abort
-			logger.Debug("Ethash nonce search aborted", "attempts", nonce-seed)
+			log.Debug("Ethash nonce search aborted", "attempts", nonce-seed)
 			//ethash.hashrate.Mark(attempts)
 			break search
 
@@ -176,9 +168,9 @@ search:
 				// Seal and return a block (if still needed)
 				select {
 				case found <- block.WithSeal(header):
-					logger.Debug("Ethash nonce found and reported", "attempts", nonce-seed, "nonce", nonce)
+					log.Debug("Ethash nonce found and reported", "attempts", nonce-seed, "nonce", nonce)
 				case <-abort:
-					logger.Debug("Ethash nonce found but discarded", "attempts", nonce-seed, "nonce", nonce)
+					log.Debug("Ethash nonce found but discarded", "attempts", nonce-seed, "nonce", nonce)
 				}
 				break search
 			}
@@ -229,4 +221,16 @@ func calcDifficultyFrontier(time uint64, parent *types.Header) *big.Int {
 		diff = cmath.BigMax(diff, MinimumDifficulty)
 	}
 	return diff
+}
+
+// AccumulateRewards credits the coinbase of the given block with the mining
+// reward. The total reward consists of the static block reward and rewards for
+// included uncles. The coinbase of each uncle block is also rewarded.
+func accumulateRewards(state *state.StateDB, header *types.Header) {
+	// Select the correct block reward based on chain progression
+	blockReward := FrontierBlockReward
+
+	// Accumulate the rewards for the miner and any included uncles
+	reward := new(big.Int).Set(blockReward)
+	state.AddBalance(header.Miner, reward)
 }
