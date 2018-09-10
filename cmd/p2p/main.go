@@ -1,36 +1,62 @@
 package main
 
 import (
-	"github.com/invin/kkchain/p2p/discovery"
+	"flag"
 	"fmt"
-	"encoding/hex"
 	"time"
 
-	libcrypto "github.com/libp2p/go-libp2p-crypto"
+	"encoding/hex"
+
+	"github.com/invin/kkchain/config"
+	"github.com/invin/kkchain/crypto/blake2b"
+	"github.com/invin/kkchain/crypto/ed25519"
+	"github.com/invin/kkchain/klogging"
+	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/p2p/impl"
 )
 
-func main()  {
+// init config and loggingLoger
+func init() {
+	config.Init("")
+	klogging.Init(config.AppConfig.Log.GetString("log.level"), config.AppConfig.Log.GetString("log.format"))
+	// mainLogger.Debugf("debug %s", "secret")
+	// mainLogger.Info("info")
+	// mainLogger.Notice("notice")
+	// mainLogger.Warning("warning")
+	// mainLogger.Error("err")
+	// mainLogger.Critical("crit")
+}
 
-	key, _ := discovery.GenerateKey(libcrypto.Secp256k1)
-	pbKey,_ := key.GetPublic().Bytes()
-	fmt.Printf("key: %v, len: %d\n", hex.EncodeToString(pbKey), len(pbKey))
+func main() {
+	port := flag.String("p", "9998", "")
+	sec := flag.Int("s", 120, "")
+	keypath := flag.String("k", "", "")
+	flag.Parse()
 
-	peerA := discovery.CreateID("111", pbKey)
-	fmt.Printf("peer A: %s\n", peerA.String())
+	config := p2p.Config{
+		SignaturePolicy: ed25519.New(),
+		HashPolicy:      blake2b.New(),
+	}
 
-	dht,_ := discovery.NewDHT("", peerA)
+	listen := "/ip4/127.0.0.1/tcp/" + *port
 
-	key, _ = discovery.GenerateKey(libcrypto.Secp256k1)
-	pbKey,_ = key.GetPublic().Bytes()
-	peerB := discovery.CreateID("222", pbKey)
-	fmt.Printf("peer B: %s\n", peerB.String())
+	net := impl.NewNetwork(*keypath, listen, config, nil)
+	seconds := time.Duration(*sec)
 
-	dht.AddPeer(peerB)
+	if *port != "9998" {
+		remoteKeyPath := "node1.key"
+		pri, _ := p2p.LoadNodeKeyFromFile(remoteKeyPath)
+		pub, _ := ed25519.New().PrivateToPublic(pri)
+		node := "/ip4/127.0.0.1/tcp/9998"
+		node = hex.EncodeToString(pub) + "@" + node
+		fmt.Printf("remote peer: %s\n", node)
+		net.BootstrapNodes = []string{node}
+	}
 
-	dht.Start()
+	err := net.Start()
+	if err != nil {
+		fmt.Printf("failed to start server: %s\n", err)
+	}
 
-	time.Sleep(time.Duration(30*time.Second))
-
-	dht.Stop()
-
+	time.Sleep(time.Second * seconds)
 }

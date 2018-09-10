@@ -1,29 +1,39 @@
 package p2p
 
-import (
-	"github.com/invin/kkchain/p2p/discovery"
-	"time"
-)
-
-const (
-	DefaultSyncTableInterval = 30 * time.Second
-	DefaultSaveTableInterval = 2 * time.Minute
-	DefaultSeedMinTableTime  = 6 * time.Minute
-)
-
-type Config struct {
-	BucketSize           int
-	RoutingTableDir      string
-	BootNodes            []string
-	PrivateKeyPath       string
-}
-
-//DefaultConfig return default config.
-func DefaultConfig() *Config {
-	return &Config{
-		BucketSize : discovery.BucketSize,
-		RoutingTableDir : "",
-		BootNodes: []string{},
-		PrivateKeyPath: "",
-	}
-}
+//type Config struct {
+//	NetworkConfig
+//	DHTConfig
+//}
+//
+//type NetworkConfig struct {
+//	PrivateKeyPath  string
+//	MaxPeers        int
+//	MaxPendingPeers int
+//	BootstrapNodes  []string
+//	Listen          string
+//
+//	SignaturePolicy crypto.SignaturePolicy
+//	HashPolicy      crypto.HashPolicy
+//}
+//
+////DefaultConfig return default config.
+//func DefaultConfig() *Config {
+//	networkConfig := NetworkConfig{
+//		PrivateKeyPath:  "",
+//		MaxPeers:        50,
+//		MaxPendingPeers: 50,
+//		BootstrapNodes:  []string{},
+//		Listen:          "/ip4/0.0.0.0/tcp/8860",
+//	}
+//
+//	tableConfig := DHTConfig{
+//		BucketSize:      16,
+//		RoutingTableDir: "",
+//		BootstrapNodes:  []string{},
+//	}
+//
+//	return &Config{
+//		NetworkConfig: networkConfig,
+//		DHTConfig:     tableConfig,
+//	}
+//}
