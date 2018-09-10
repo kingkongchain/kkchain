@@ -13,6 +13,7 @@
 /vendor/
 /.idea/
 .DS_Store
-.project
-.vscode/
 *.key
+/.vscode/
+*.project
+*.DS_Store
