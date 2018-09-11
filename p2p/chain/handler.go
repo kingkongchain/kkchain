@@ -337,7 +337,18 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 		}
 		header := c.blockchain.GetHeaderByHash(hash)
 		if header == nil {
-			log.Error("failed to get header %s from local", hash.String())
+
+			// maybe request this block from peers if local hasn't。
+			//log.Error("failed to get header %s from local", hash.String())
+			thisPeerID := fmt.Sprintf("%x", p.PublicKey[:8])
+			for _, peer := range c.peers.peers {
+				if peer.ID != thisPeerID {
+
+					// TODO: request block Or header ?
+					peer.SendNewBlockHashes([]common.Hash{hash})
+				}
+			}
+
 			continue
 		}
 		hbytes, err := json.Marshal(header)
