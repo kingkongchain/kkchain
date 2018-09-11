@@ -125,20 +125,20 @@ func (c *Chain) handleGetBlockBodies(ctx context.Context, p p2p.ID, pmes *Messag
 		hash := common.Hash{}
 		err = json.Unmarshal(hbytes, &hash)
 		if err != nil {
-			log.Error("failed to unmarshal bytes(%s) to common hash", hex.EncodeToString(hbytes))
+			log.Error("failed to unmarshal bytes(%s) to common hash,error: %v", hex.EncodeToString(hbytes), err)
 			continue
 		}
 
 		block := c.blockchain.GetBlockByHash(hash)
 		if block == nil {
-			log.Error("failed to get block %s from local", hash.String())
+			log.Error("failed to get block %s from local,error: %v", hash.String(), err)
 			continue
 		}
 		body := block.Body()
 
 		bbytes, err := json.Marshal(body)
 		if err != nil {
-			log.Error("failed to marshal block body %d to bytes", block.NumberU64())
+			log.Error("failed to marshal block body %d to bytes,error: %v", block.NumberU64(), err)
 			continue
 		}
 		bodies = append(bodies, bbytes)
@@ -176,12 +176,12 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 		}
 		header := c.blockchain.GetHeaderByNumber(i)
 		if header == nil {
-			log.Error("failed to get header %d from local", i)
+			log.Error("failed to get header %d from local,error: %v", i, err)
 			continue
 		}
 		hbytes, err := json.Marshal(header)
 		if err != nil {
-			log.Error("failed to marshal block header %d to bytes", i)
+			log.Error("failed to marshal block header %d to bytes,error: %v", i, err)
 			continue
 		}
 		headerBytes = append(headerBytes, hbytes)
@@ -205,7 +205,7 @@ func (c *Chain) handleBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) 
 		body := new(types.Body)
 		err = json.Unmarshal(bbytes, body)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to block body")
+			log.Error("failed to unmarshal bytes to block body,error: %v", err)
 			continue
 		}
 		log.Info("receive block body %v", body.Transactions)
@@ -228,7 +228,7 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 		header := new(types.Header)
 		err = json.Unmarshal(hbytes, header)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to block header")
+			log.Error("failed to unmarshal bytes to block header,error: %v", err)
 			continue
 		}
 		log.Info("receive header %s", header.Hash().String())
@@ -251,7 +251,7 @@ func (c *Chain) handleTransactions(ctx context.Context, p p2p.ID, pmes *Message)
 		tx := new(*types.Transaction)
 		err = json.Unmarshal(txbytes, tx)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to transaction")
+			log.Error("failed to unmarshal bytes to transaction,error: %v", err)
 			continue
 		}
 
@@ -275,14 +275,14 @@ func (c *Chain) handleGetReceipts(ctx context.Context, p p2p.ID, pmes *Message) 
 		receiptHash := common.Hash{}
 		err = json.Unmarshal(rhbytes, &receiptHash)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to transaction")
+			log.Error("failed to unmarshal bytes to transaction,error: %v", err)
 			continue
 		}
 
 		receipt := c.blockchain.GetReceiptByHash(receiptHash)
 		rbytes, err := json.Marshal(receipt)
 		if err != nil {
-			log.Error("failed to marshal receipt to bytes")
+			log.Error("failed to marshal receipt to bytes,error: %v", err)
 			continue
 		}
 
@@ -305,7 +305,7 @@ func (c *Chain) handleReceipts(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		receipt := new(*types.Receipt)
 		err = json.Unmarshal(rbytes, receipt)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to receipt")
+			log.Error("failed to unmarshal bytes to receipt,error: %v", err)
 			continue
 		}
 
@@ -332,7 +332,7 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 		hash := common.Hash{}
 		err = json.Unmarshal(hbytes, &hash)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to common hash")
+			log.Error("failed to unmarshal bytes to common hash,error: %v", err)
 			continue
 		}
 		header := c.blockchain.GetHeaderByHash(hash)
@@ -342,7 +342,7 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 		}
 		hbytes, err := json.Marshal(header)
 		if err != nil {
-			log.Error("failed to marshal block header %s to bytes", hash.String())
+			log.Error("failed to marshal block header %s to bytes,error: %v", hash.String(), err)
 			continue
 		}
 		headerBytes = append(headerBytes, hbytes)
@@ -372,7 +372,7 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		receiveBlock := new(types.Block)
 		err = json.Unmarshal(bbytes, receiveBlock)
 		if err != nil {
-			log.Error("failed to unmarshal bytes to block")
+			log.Error("failed to unmarshal bytes to block,error: %v", err)
 			continue
 		}
 		//fmt.Println("反序列化接收到new block里的header消息：%v", receiveBlock.Header())
