@@ -381,6 +381,10 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		fmt.Println("反序列化接收到new block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
 		fmt.Println("反序列化接收到new block里的Difficulty消息：%v", receiveBlock.Difficulty())
 
+		// mark remote peer hash known this block
+		id := fmt.Sprintf("%x", p.PublicKey[:8])
+		c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
+
 		// fmt.Printf(`
 		// 	number: %d
 		// 	{
@@ -412,7 +416,7 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 
 		//1. validata receive block
 		if err := c.blockchain.Validator().ValidateBody(receiveBlock); err != nil {
-			log.Error("Validator block error:", err)
+			//log.Error("Validator block error:", err)
 			return resp, nil
 		}
 
