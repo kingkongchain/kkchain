@@ -319,6 +319,7 @@ func resolvePath(path string) string {
 
 // WriteBlockWithState writes the block and all associated state to the database.
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
+	log.Info("*******enter into WriteBlockWithState")
 	bc.wg.Add(1)
 	defer bc.wg.Done()
 
@@ -369,6 +370,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	if reorg {
 		// Reorganise the chain if the parent is not the head block
 		if block.ParentHash() != currentBlock.Hash() {
+			fmt.Println("!!!!!!!enter into WriteBlockWithState reorg")
 			if err := bc.reorg(currentBlock, block); err != nil {
 				return err
 			}
@@ -392,6 +394,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 // to be part of the new canonical chain and accumulates potential missing transactions and post an
 // event about them
 func (bc *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
+	log.Info("*******enter into reorg")
 	var (
 		newChain    types.Blocks
 		oldChain    types.Blocks
@@ -452,6 +455,7 @@ func (bc *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
 	var addedTxs types.Transactions
 	for i := len(newChain) - 1; i >= 0; i-- {
 		// insert the block in the canonical way, re-writing history
+		fmt.Println("!!!!!!!prepare insert Canonical chain!")
 		bc.insert(newChain[i])
 		// write lookup entries for hash based transaction/receipt searches
 		rawdb.WriteTxLookupEntries(bc.db, newChain[i])
@@ -745,6 +749,7 @@ func (bc *BlockChain) PostNewBlockEvent(block *types.Block) {
 }
 
 func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
+	log.Info("*******Enter into InsertChain")
 	n, events, logs, err := bc.insertChain(chain)
 	bc.PostChainEvents(events, logs)
 	return n, err
@@ -754,7 +759,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 	if len(chain) == 0 {
 		return 0, nil, nil, nil
 	}
-
+	log.Info("*******Enter into insertChain")
 	// Do a sanity check that the provided chain is actually ordered and linked
 	for i := 1; i < len(chain); i++ {
 		if chain[i].NumberU64() != chain[i-1].NumberU64()+1 || chain[i].ParentHash() != chain[i-1].Hash() {
@@ -784,7 +789,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 	)
 
 	for i, block := range chain {
-		log.Info("insert block: %s", block.String())
+		log.Info("enter block: %s", block.String())
 
 		//TODO: optimization parallel verify header???
 		err := bc.engine.VerifyHeader(bc, block.Header())
@@ -862,6 +867,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 		}
 
 		// Write the block to the chain and get the status.
+		log.Info("*******WriteBlockWithState")
 		err = bc.WriteBlockWithState(block, receipts, state)
 		if err != nil {
 			return i, events, coalescedLogs, err
