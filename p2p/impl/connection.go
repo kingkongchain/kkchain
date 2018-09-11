@@ -3,7 +3,6 @@ package impl
 import (
 	"bufio"
 	"encoding/binary"
-	"encoding/json"
 	"io"
 	"net"
 	"sync"
@@ -245,13 +244,9 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 
 // TODO:
 // only use for chain request
-func (c *Connection) SendChainMsg(msgType int32, data interface{}) error {
-	cbytes, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
+func (c *Connection) SendChainMsg(msgType int32, data [][]byte) error {
 	newMsg := &chain.DataMsg{
-		Data: [][]byte{cbytes},
+		Data: data,
 	}
 	msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
 	return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")

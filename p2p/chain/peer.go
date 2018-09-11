@@ -8,6 +8,8 @@ import (
 
 	"time"
 
+	"encoding/json"
+
 	"github.com/deckarep/golang-set"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
@@ -135,24 +137,48 @@ func (p *peer) MarkTransactions(hash common.Hash) {
 }
 
 func (p *peer) SendTransactions(txs []*types.Transaction) error {
+	data := [][]byte{}
 	for _, tx := range txs {
 		p.knownTxs.Add(tx.Hash())
+
+		txbytes, err := json.Marshal(tx)
+		if err != nil {
+			log.Error("failed to marshal transaction to bytes,error: %v", err)
+			continue
+		}
+		data = append(data, txbytes)
 	}
-	return p.conn.SendChainMsg(int32(Message_TRANSACTIONS), txs)
+	return p.conn.SendChainMsg(int32(Message_TRANSACTIONS), data)
 }
 
 func (p *peer) SendNewBlockHashes(hashes []common.Hash) error {
+	data := [][]byte{}
 	for _, hash := range hashes {
 		p.knownBlocks.Add(hash)
+
+		hbytes, err := json.Marshal(hash)
+		if err != nil {
+			log.Error("failed to marshal hash to bytes,error: %v", err)
+			continue
+		}
+		data = append(data, hbytes)
 	}
-	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK_HASHS), hashes)
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK_HASHS), data)
 }
 
 func (p *peer) SendNewBlock(block *types.Block) error {
 	p.knownBlocks.Add(block.Hash())
 	log.Info("@@@@@@@@@SendNewBlock,blocknum:", block.NumberU64(), "hash", block.Hash())
 	fmt.Println("@@@@@@@@@SendNewBlock %v", block)
-	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), *block)
+
+	data := [][]byte{}
+	bbytes, err := json.Marshal(block)
+	if err != nil {
+		log.Error("failed to marshal block to bytes,error: %v", err)
+	} else {
+		data = append(data, bbytes)
+	}
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), data)
 }
 
 func (p *peer) AsyncSendNewBlock(block *types.Block) {

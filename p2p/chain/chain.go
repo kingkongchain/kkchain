@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"math/big"
@@ -106,7 +107,7 @@ func (c *Chain) doHandleMessage(conn p2p.Conn, msg *Message) {
 
 	// if nil response, return it before serializing
 	if rpmes == nil {
-		log.Warning("got back nil response from request")
+		//log.Warning("got back nil response from request")
 		if err != nil {
 			log.Error("failed to make response for request,error: %v", err)
 		}
@@ -157,6 +158,10 @@ func (c *Chain) Connected(conn p2p.Conn) {
 
 func (c *Chain) Disconnected(conn p2p.Conn) {
 	log.Infof("a disconn is notified,remote ID: %s", conn.RemotePeer())
+	c.peers.lock.Lock()
+	defer c.peers.lock.Unlock()
+	id := fmt.Sprintf("%x", conn.RemotePeer().PublicKey[:8])
+	c.peers.Unregister(id)
 }
 
 func (c *Chain) removePeer(id string) {
