@@ -2,6 +2,7 @@ package chain
 
 import (
 	"context"
+	"fmt"
 	"math"
 
 	"math/big"
@@ -157,6 +158,10 @@ func (c *Chain) Connected(conn p2p.Conn) {
 
 func (c *Chain) Disconnected(conn p2p.Conn) {
 	log.Infof("a disconn is notified,remote ID: %s", conn.RemotePeer())
+	c.peers.lock.Lock()
+	defer c.peers.lock.Unlock()
+	id := fmt.Sprintf("%x", conn.RemotePeer().PublicKey[:8])
+	c.peers.Unregister(id)
 }
 
 func (c *Chain) removePeer(id string) {
