@@ -189,6 +189,8 @@ func (ethash *Ethash) verifySeal(chain consensus.ChainReader, header *types.Head
 func (ethash *Ethash) Seal(chain consensus.ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error) {
 	// If we're running a fake PoW, simply return a 0 nonce immediately
 	if ethash.config.PowMode == ModeFake || ethash.config.PowMode == ModeFullFake {
+		fmt.Println("!!!!!!!!!!!!!!!begin pow fake Seal", ethash.fakeDelay)
+		time.Sleep(ethash.fakeDelay)
 		header := block.Header()
 		header.Nonce, header.MixDigest = types.BlockNonce{}, common.Hash{}
 		return block.WithSeal(header), nil
