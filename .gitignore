@@ -17,3 +17,4 @@
 /.vscode/
 *.project
 *.DS_Store
+cache*
