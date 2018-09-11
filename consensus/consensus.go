@@ -51,7 +51,7 @@ type Engine interface {
 	Execute(chain ChainReader, block *types.Block, stop <-chan struct{}) (*types.Block, error)
 	PostExecute(chain ChainReader, block *types.Block) error
 
-	VerifyHeader(header *types.Header) error
+	VerifyHeader(chain ChainReader, header *types.Header) error
 	Verify(block *types.Block) error
 	Close() error
 }

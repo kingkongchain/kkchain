@@ -1,15 +1,16 @@
 package miner
 
 import (
-	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/consensus/pow"
-	"github.com/invin/kkchain/core"
-	"github.com/invin/kkchain/params"
 	"os"
 	"os/user"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/consensus/pow"
+	"github.com/invin/kkchain/core"
+	"github.com/invin/kkchain/params"
 )
 
 func TestMiner_Start(t *testing.T) {
@@ -40,7 +41,6 @@ func TestMine(t *testing.T) {
 	}
 	t.Log("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
 
-	chain, _ := core.NewBlockChain(chainDb)
 	powConfig := pow.Config{
 		CacheDir:       "ethash",
 		CachesInMem:    2,
@@ -54,6 +54,8 @@ func TestMine(t *testing.T) {
 	logger.Info(powConfig.DatasetDir)
 	engine := pow.New(powConfig, nil)
 	defer engine.Close()
+
+	chain, _ := core.NewBlockChain(chainDb, engine)
 
 	txpool := core.NewTxPool()
 

@@ -5,11 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"math/big"
+	"math/rand"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
-
-	mrand "math/rand"
 
 	lru "github.com/hashicorp/golang-lru"
 	"github.com/invin/kkchain/common"
@@ -51,13 +50,15 @@ type Config struct {
 //currently for testing purposes
 //TODO：the subsequent need to really implement blockchain
 type BlockChain struct {
-	mu     *sync.RWMutex
-	wg     sync.WaitGroup // chain processing wait group for shutting down
-	procmu sync.RWMutex   // block processor lock
-	config Config
+	mu      *sync.RWMutex
+	wg      sync.WaitGroup // chain processing wait group for shutting down
+	procmu  *sync.RWMutex  // block processor lock
+	chainmu *sync.RWMutex  // blockchain insertion lock
+	config  Config
 
 	engine    consensus.Engine
 	validator Validator // block and state validator interface
+	processor Processor // block processor interface
 
 	db           storage.Database
 	blockCache   *lru.Cache // Cache for the most recent entire blocks
@@ -98,6 +99,8 @@ func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, e
 
 	bc := &BlockChain{
 		mu:           &sync.RWMutex{},
+		procmu:       &sync.RWMutex{},
+		chainmu:      &sync.RWMutex{},
 		db:           db,
 		stateCache:   state.NewDatabase(db),
 		headerCache:  headerCache,
@@ -109,6 +112,7 @@ func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, e
 	}
 
 	bc.SetValidator(NewBlockValidator(bc))
+	bc.SetProcessor(NewStateProcessor(bc))
 	//init genesis block
 	bc.genesisBlock = bc.GetBlockByNumber(0)
 	if bc.genesisBlock == nil {
@@ -120,9 +124,6 @@ func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, e
 		return nil, err
 	}
 
-	//for test
-	//bc.currentBlock.Store(bc.genesisBlock)
-
 	return bc, nil
 }
 
@@ -132,6 +133,10 @@ func (bc *BlockChain) ChainID() uint64 {
 
 func (bc *BlockChain) GenesisBlock() *types.Block {
 	return bc.genesisBlock
+}
+
+func (bc *BlockChain) Engine() consensus.Engine {
+	return bc.engine
 }
 
 // loadLastState loads the last known chain state from the database. This method
@@ -359,7 +364,7 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	currentBlock = bc.CurrentBlock()
 	if !reorg && externTd.Cmp(localTd) == 0 {
 		// Split same-difficulty blocks by number, then at random
-		reorg = block.NumberU64() < currentBlock.NumberU64() || (block.NumberU64() == currentBlock.NumberU64() && mrand.Float64() < 0.5)
+		reorg = block.NumberU64() < currentBlock.NumberU64() || (block.NumberU64() == currentBlock.NumberU64() && rand.Float64() < 0.5)
 	}
 	if reorg {
 		// Reorganise the chain if the parent is not the head block
@@ -750,11 +755,23 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 		return 0, nil, nil, nil
 	}
 
+	// Do a sanity check that the provided chain is actually ordered and linked
+	for i := 1; i < len(chain); i++ {
+		if chain[i].NumberU64() != chain[i-1].NumberU64()+1 || chain[i].ParentHash() != chain[i-1].Hash() {
+			// Chain broke ancestry, log a message (programming error) and skip insertion
+			log.Error("Non contiguous block insert", "number", chain[i].Number(), "hash", chain[i].Hash(),
+				"parent", chain[i].ParentHash(), "prevnumber", chain[i-1].Number(), "prevhash", chain[i-1].Hash())
+
+			return 0, nil, nil, fmt.Errorf("non contiguous insert: item %d is #%d [%x…], item %d is #%d [%x…] (parent [%x…])", i-1, chain[i-1].NumberU64(),
+				chain[i-1].Hash().Bytes()[:4], i, chain[i].NumberU64(), chain[i].Hash().Bytes()[:4], chain[i].ParentHash().Bytes()[:4])
+		}
+	}
+
 	bc.wg.Add(1)
 	defer bc.wg.Done()
 
-	bc.mu.Lock()
-	defer bc.mu.Unlock()
+	bc.chainmu.Lock()
+	defer bc.chainmu.Unlock()
 
 	// A queued approach to delivering events. This is generally
 	// faster than direct delivery and requires much less mutex
@@ -765,26 +782,94 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 		lastCanon     *types.Block
 		coalescedLogs []*types.Log
 	)
-	for i, block := range chain {
-		//fmt.Println("########insertChain里的parent：%v", block.Header())
-		// fmt.Println("########insertChain里的parent的number消息：%v", block.Header().Number)
-		// fmt.Println("########insertChain里的parent的hash消息：%v", block.Hash().String())
-		// fmt.Println("########insertChain里的parent的ParentHash消息：%v", block.ParentHash().String())
-		// fmt.Println("########insertChain里的parent的Difficulty消息：%v", block.Difficulty())
-		// fmt.Println("########insertChain里的parent的StateRoot消息：%v", block.StateRoot().String())
 
-		// Write the block to the chain and get the status.
-		//err: = bc.WriteBlockWithState(block, make([]*types.Receipt, 1), state) //receipt is empty just for test
-		err := bc.WriteBlockWithoutState(block)
+	for i, block := range chain {
+		log.Info("insert block: %s", block.String())
+
+		//TODO: optimization parallel verify header???
+		err := bc.engine.VerifyHeader(bc, block.Header())
+		if err == nil {
+			err = bc.Validator().ValidateBody(block)
+		}
+
+		switch {
+		case err == ErrKnownBlock:
+			log.Info(err)
+			// Block and state both already known. However if the current block is below
+			// this number we did a rollback and we should reimport it nonetheless.
+			if bc.CurrentBlock().NumberU64() >= block.NumberU64() {
+				continue
+			}
+		case err == consensus.ErrPrunedAncestor:
+			// Block competing with the canonical chain, store in the db, but don't process
+			// until the competitor TD goes above the canonical TD
+			currentBlock := bc.CurrentBlock()
+			localTd := bc.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
+			externTd := new(big.Int).Add(bc.GetTd(block.ParentHash(), block.NumberU64()-1), block.Difficulty())
+			if localTd.Cmp(externTd) > 0 {
+				if err = bc.WriteBlockWithoutState(block, externTd); err != nil {
+					return i, events, coalescedLogs, err
+				}
+				continue
+			}
+			// Competitor chain beat canonical, gather all blocks from the common ancestor
+			var winner []*types.Block
+
+			parent := bc.GetBlock(block.ParentHash(), block.NumberU64()-1)
+			for !bc.HasState(parent.StateRoot()) {
+				winner = append(winner, parent)
+				parent = bc.GetBlock(parent.ParentHash(), parent.NumberU64()-1)
+			}
+			for j := 0; j < len(winner)/2; j++ {
+				winner[j], winner[len(winner)-1-j] = winner[len(winner)-1-j], winner[j]
+			}
+			// Import all the pruned blocks to make the state available
+			bc.chainmu.Unlock()
+			_, evs, logs, err := bc.insertChain(winner)
+			bc.chainmu.Lock()
+			events, coalescedLogs = evs, logs
+
+			if err != nil {
+				return i, events, coalescedLogs, err
+			}
+		case err != nil:
+			return i, events, coalescedLogs, err
+		}
+
+		// Create a new statedb using the parent block and report an
+		// error if it fails.
+		var parent *types.Block
+		if i == 0 {
+			parent = bc.GetBlock(block.ParentHash(), block.NumberU64()-1)
+		} else {
+			parent = chain[i-1]
+		}
+		state, err := state.New(parent.StateRoot(), bc.stateCache)
 		if err != nil {
 			return i, events, coalescedLogs, err
 		}
-		events = append(events, ChainEvent{block, block.Hash(), make([]*types.Log, 1)})
+
+		// Process block using the parent state as reference point.
+		receipts, logs, usedGas, err := bc.processor.Process(block, state)
+		if err != nil {
+			return i, events, coalescedLogs, err
+		}
+
+		//Validate the state using the default validator
+		err = bc.Validator().ValidateState(block, parent, state, receipts, usedGas)
+		if err != nil {
+			return i, events, coalescedLogs, err
+		}
+
+		// Write the block to the chain and get the status.
+		err = bc.WriteBlockWithState(block, receipts, state)
+		if err != nil {
+			return i, events, coalescedLogs, err
+		}
+
+		coalescedLogs = append(coalescedLogs, logs...)
+		events = append(events, ChainEvent{block, block.Hash(), logs})
 		lastCanon = block
-	}
-	//TODO：need to implement real TD
-	if lastCanon.Difficulty().Cmp(bc.CurrentBlock().Difficulty()) > 0 {
-		bc.insert(lastCanon)
 	}
 
 	// Append a single chain head event if we've progressed the chain
@@ -794,9 +879,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 	return 0, events, coalescedLogs, nil
 }
 
-func (bc *BlockChain) WriteBlockWithoutState(block *types.Block) (err error) {
+func (bc *BlockChain) WriteBlockWithoutState(block *types.Block, td *big.Int) (err error) {
 	bc.wg.Add(1)
 	defer bc.wg.Done()
+
+	if err := bc.WriteTd(block.Hash(), block.NumberU64(), td); err != nil {
+		return err
+	}
 
 	rawdb.WriteBlock(bc.db, block)
 	return nil
@@ -814,4 +903,18 @@ func (bc *BlockChain) Validator() Validator {
 	bc.procmu.RLock()
 	defer bc.procmu.RUnlock()
 	return bc.validator
+}
+
+// SetProcessor sets the processor required for making state modifications.
+func (bc *BlockChain) SetProcessor(processor Processor) {
+	bc.procmu.Lock()
+	defer bc.procmu.Unlock()
+	bc.processor = processor
+}
+
+// Processor returns the current processor.
+func (bc *BlockChain) Processor() Processor {
+	bc.procmu.RLock()
+	defer bc.procmu.RUnlock()
+	return bc.processor
 }

@@ -46,8 +46,6 @@ type worker struct {
 	txpool *core.TxPool
 	engine consensus.Engine
 
-	mineLoopCh chan struct{}
-
 	//tx pool add new txs
 	txsCh  chan types.Transactions
 	txsSub event.Subscription
@@ -72,7 +70,6 @@ func newWorker(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine
 		engine:      engine,
 		txsCh:       make(chan types.Transactions),
 		chainHeadCh: make(chan core.ChainHeadEvent),
-		mineLoopCh:  make(chan struct{}),
 		taskCh:      make(chan *task),
 		resultCh:    make(chan *task),
 	}
@@ -111,9 +108,6 @@ func (w *worker) mineLoop() {
 			if w.isRunning() {
 				w.commitTask()
 			}
-		case <-w.mineLoopCh:
-			//Start new mine task
-			w.commitTask()
 		case <-w.startCh:
 			w.commitTask()
 		case <-w.quitCh:
@@ -166,7 +160,7 @@ func (w *worker) waitResult() {
 			}
 			block := result.block
 
-			w.blockinfo(block)
+			w.blockinfo("new block mined!!! =====>", block)
 
 			// Short circuit when receiving duplicate result caused by resubmitting.
 			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
@@ -348,19 +342,8 @@ func (w *worker) currentContext(parent *types.Block, header *types.Header) error
 	return nil
 }
 
-func (w *worker) blockinfo(block *types.Block) {
-
-	fmt.Printf(`new block mined!!! =====>
-	number: %d 
-	{
-		hash: %s
-		parent: %s
-		state: %s
-		diff: 0x%x
-		gaslimit: %d
-		gasused: %d
-		nonce: 0x%x
-	}`+"\n", block.Number(), block.Hash().String(), block.ParentHash().String(), block.StateRoot().String(), block.Difficulty(), block.GasLimit(), block.GasUsed(), block.Nonce())
+func (w *worker) blockinfo(desc string, block *types.Block) {
+	fmt.Printf("%s%s", desc, block.String())
 }
 
 var (

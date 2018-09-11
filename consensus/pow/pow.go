@@ -1,12 +1,16 @@
 package pow
 
 import (
+	"bytes"
 	crand "crypto/rand"
+	"errors"
+	"fmt"
 	"math"
 	"math/big"
 	"math/rand"
 	"runtime"
 	"sync"
+	"time"
 
 	"github.com/invin/kkchain/common"
 	cmath "github.com/invin/kkchain/common/math"
@@ -20,6 +24,18 @@ import (
 var (
 	FrontierBlockReward *big.Int = big.NewInt(5e+18) // Block reward in wei for successfully mining a block
 
+)
+
+var (
+	errLargeBlockTime    = errors.New("timestamp too big")
+	errZeroBlockTime     = errors.New("timestamp equals parent's")
+	errTooManyUncles     = errors.New("too many uncles")
+	errDuplicateUncle    = errors.New("duplicate uncle")
+	errUncleIsAncestor   = errors.New("uncle is ancestor")
+	errDanglingUncle     = errors.New("uncle's parent is not ancestor")
+	errInvalidDifficulty = errors.New("non-positive difficulty")
+	errInvalidMixDigest  = errors.New("invalid mix digest")
+	errInvalidPoW        = errors.New("invalid proof-of-work")
 )
 
 func (ethash *Ethash) Initialize(chain consensus.ChainReader, header *types.Header) error {
@@ -50,11 +66,121 @@ func (ethash *Ethash) PostExecute(chain consensus.ChainReader, block *types.Bloc
 	return nil
 }
 
-func (ethash *Ethash) VerifyHeader(header *types.Header) error {
+func (ethash *Ethash) VerifyHeader(chain consensus.ChainReader, header *types.Header) error {
+	// Short circuit if the header is known, or it's parent not
+	number := header.Number.Uint64()
+	if chain.GetHeader(header.Hash(), number) != nil {
+		return nil
+	}
+	parent := chain.GetHeader(header.ParentHash, number-1)
+	if parent == nil {
+		return consensus.ErrUnknownAncestor
+	}
+
+	if header.Time.Cmp(parent.Time) <= 0 {
+		return errZeroBlockTime
+	}
+	// Verify the block's difficulty based in it's timestamp and parent's difficulty
+	expected := calcDifficultyFrontier(header.Time.Uint64(), parent)
+
+	if expected.Cmp(header.Difficulty) != 0 {
+		return fmt.Errorf("invalid difficulty: have %v, want %v", header.Difficulty, expected)
+	}
+	// Verify that the gas limit is <= 2^63-1
+	cap := uint64(0x7fffffffffffffff)
+	if header.GasLimit > cap {
+		return fmt.Errorf("invalid gasLimit: have %v, max %v", header.GasLimit, cap)
+	}
+	// Verify that the gasUsed is <= gasLimit
+	if header.GasUsed > header.GasLimit {
+		return fmt.Errorf("invalid gasUsed: have %d, gasLimit %d", header.GasUsed, header.GasLimit)
+	}
+
+	// Verify that the gas limit remains within allowed bounds
+	diff := int64(parent.GasLimit) - int64(header.GasLimit)
+	if diff < 0 {
+		diff *= -1
+	}
+
+	// Verify that the block number is parent's +1
+	if diff := new(big.Int).Sub(header.Number, parent.Number); diff.Cmp(big.NewInt(1)) != 0 {
+		return consensus.ErrInvalidNumber
+	}
+	// Verify the engine specific seal securing the block
+	if err := ethash.verifySeal(chain, header, false); err != nil {
+		return err
+	}
+
 	return nil
 }
 
 func (ethash *Ethash) Verify(block *types.Block) error {
+	return nil
+}
+
+// verifySeal checks whether a block satisfies the PoW difficulty requirements,
+// either using the usual ethash cache for it, or alternatively using a full DAG
+// to make remote mining fast.
+func (ethash *Ethash) verifySeal(chain consensus.ChainReader, header *types.Header, fulldag bool) error {
+	// If we're running a fake PoW, accept any seal as valid
+	if ethash.config.PowMode == ModeFake || ethash.config.PowMode == ModeFullFake {
+		time.Sleep(ethash.fakeDelay)
+		if ethash.fakeFail == header.Number.Uint64() {
+			return errInvalidPoW
+		}
+		return nil
+	}
+	// If we're running a shared PoW, delegate verification to it
+	if ethash.shared != nil {
+		return ethash.shared.verifySeal(chain, header, fulldag)
+	}
+	// Ensure that we have a valid difficulty for the block
+	if header.Difficulty.Sign() <= 0 {
+		return errInvalidDifficulty
+	}
+	// Recompute the digest and PoW values
+	number := header.Number.Uint64()
+
+	var (
+		digest []byte
+		result []byte
+	)
+	// If fast-but-heavy PoW verification was requested, use an ethash dataset
+	if fulldag {
+		dataset := ethash.dataset(number, true)
+		if dataset.generated() {
+			digest, result = hashimotoFull(dataset.dataset, header.HashNoNonce().Bytes(), header.Nonce.Uint64())
+
+			// Datasets are unmapped in a finalizer. Ensure that the dataset stays alive
+			// until after the call to hashimotoFull so it's not unmapped while being used.
+			runtime.KeepAlive(dataset)
+		} else {
+			// Dataset not yet generated, don't hang, use a cache instead
+			fulldag = false
+		}
+	}
+	// If slow-but-light PoW verification was requested (or DAG not yet ready), use an ethash cache
+	if !fulldag {
+		cache := ethash.cache(number)
+
+		size := datasetSize(number)
+		if ethash.config.PowMode == ModeTest {
+			size = 32 * 1024
+		}
+		digest, result = hashimotoLight(size, cache.cache, header.HashNoNonce().Bytes(), header.Nonce.Uint64())
+
+		// Caches are unmapped in a finalizer. Ensure that the cache stays alive
+		// until after the call to hashimotoLight so it's not unmapped while being used.
+		runtime.KeepAlive(cache)
+	}
+	// Verify the calculated values against the ones provided in the header
+	if !bytes.Equal(header.MixDigest[:], digest) {
+		return errInvalidMixDigest
+	}
+	target := new(big.Int).Div(two256, header.Difficulty)
+	if new(big.Int).SetBytes(result).Cmp(target) > 0 {
+		return errInvalidPoW
+	}
 	return nil
 }
 
