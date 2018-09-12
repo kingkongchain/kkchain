@@ -52,6 +52,7 @@ func (c *Chain) handlerForMsgType(t Message_Type) chainHandler {
 	}
 }
 
+// only retrive chain status
 func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
 	fmt.Println("接收到chain status消息：%v", pmes.String())
 
@@ -64,8 +65,7 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 	if localChainTD == nil {
 		localChainTD = new(big.Int)
 	}
-	localChainCurrentBlockHash := currentBlock.Hash().Bytes()
-	localChainCurrentBlockNum := currentBlock.NumberU64()
+
 	localChainGenesisBlock := c.blockchain.GenesisBlock().Hash().Bytes()
 	remoteChainStatus := pmes.ChainStatusMsg
 	if remoteChainStatus == nil {
@@ -83,46 +83,7 @@ func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) 
 	remoteTD := new(big.Int).SetBytes(remoteChainStatus.Td)
 	c.peers.Peer(peerID).SetHead(remoteHeadHash, remoteTD)
 
-	if bytes.Equal(localChainTD.Bytes(), remoteChainStatus.Td) &&
-		bytes.Equal(localChainCurrentBlockHash, remoteChainStatus.CurrentBlockHash) {
-		return nil, nil
-	}
-
-	var (
-		startNum  = uint64(0)
-		endNum    = uint64(0)
-		skipNum   = []uint64{}
-		direction = false
-		resp      = new(Message)
-	)
-	remoteCurrentBlockNum := remoteChainStatus.CurrentBlockNum
-
-	// local node falls behind, should send get block headers msg
-	if localChainCurrentBlockNum < remoteCurrentBlockNum {
-		startNum = localChainCurrentBlockNum + 1
-		endNum = remoteCurrentBlockNum
-
-		// TODO: checkout local receive broadcast block that between startNum and endNum
-		direction = false
-		getBlockHeadersMsg := &GetBlockHeadersMsg{
-			StartNum:  startNum,
-			EndNum:    endNum,
-			SkipNum:   skipNum,
-			Direction: direction,
-		}
-		resp = NewMessage(Message_GET_BLOCK_HEADERS, getBlockHeadersMsg)
-	}
-
-	// remote node falls behind, should send new block hashes msg
-	if localChainCurrentBlockNum > remoteCurrentBlockNum {
-		// TODO: iterator prev from current block , find block hash until the remote block num
-		newBlockHashesMsg := &DataMsg{
-			Data: [][]byte{},
-		}
-		resp = NewMessage(Message_NEW_BLOCK_HASHS, newBlockHashesMsg)
-	}
-
-	return resp, nil
+	return nil, nil
 }
 
 func (c *Chain) handleGetBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
