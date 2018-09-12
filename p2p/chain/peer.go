@@ -219,9 +219,9 @@ func (p *peer) AsyncSendTransactions(txs []*types.Transaction) {
 	}
 }
 
-// RequestHeadersByHash fetches a batch of blocks' headers corresponding to the
+// requestHeadersByHash fetches a batch of blocks' headers corresponding to the
 // specified header query, based on the hash of an origin block.
-func (p *peer) RequestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool) error {
+func (p *peer) requestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool) error {
 	log.Debug("Fetching batch of headers", "count", amount, "fromhash", origin, "skip", skip, "reverse", reverse)
 	msg := GetBlockHeadersMsg{
 		StartHash: origin,
@@ -232,9 +232,9 @@ func (p *peer) RequestHeadersByHash(origin common.Hash, amount int, skip int, re
 	return p.conn.SendChainMsg(int32(Message_GET_BLOCK_HEADERS), msg)
 }
 
-// RequestHeadersByNumber fetches a batch of blocks' headers corresponding to the
+// requestHeadersByNumber fetches a batch of blocks' headers corresponding to the
 // specified header query, based on the number of an origin block.
-func (p *peer) RequestHeadersByNumber(origin uint64, amount int, skip int, reverse bool) error {
+func (p *peer) requestHeadersByNumber(origin uint64, amount int, skip int, reverse bool) error {
 	log.Debug("Fetching batch of headers", "count", amount, "fromnum", origin, "skip", skip, "reverse", reverse)
 	msg := GetBlockHeadersMsg{
 		StartNum: origin,
@@ -245,9 +245,9 @@ func (p *peer) RequestHeadersByNumber(origin uint64, amount int, skip int, rever
 	return p.conn.SendChainMsg(int32(Message_GET_BLOCK_HEADERS), msg)
 }
 
-// RequestBlocksByNumber fetches a batch of blocks corresponding to the
+// requestBlocksByNumber fetches a batch of blocks corresponding to the
 // specified range 
-func (p *peer) RequestBlocksByNumber(origin uint64, amount int) error {
+func (p *peer) requestBlocksByNumber(origin uint64, amount int) error {
 	log.Debug("Fetching batch of blocks", "count", amount, "fromnum", origin)
 	msg := GetBlocksMsg{
 		StartNum: origin,
