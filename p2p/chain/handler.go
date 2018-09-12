@@ -52,64 +52,38 @@ func (c *Chain) handlerForMsgType(t Message_Type) chainHandler {
 	}
 }
 
+// only retrive chain status
 func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
 	fmt.Println("接收到chain status消息：%v", pmes.String())
+
+	peerID := hex.EncodeToString(p.PublicKey)
+
 	localChainID := c.blockchain.ChainID()
 	currentBlock := c.blockchain.CurrentBlock()
 
-	// TODO: retrive local current block td
-	localChainTD := new(big.Int).Bytes()
-	localChainCurrentBlockHash := currentBlock.Hash().Bytes()
-	localChainCurrentBlockNum := currentBlock.NumberU64()
+	localChainTD := currentBlock.Td
+	if localChainTD == nil {
+		localChainTD = new(big.Int)
+	}
+
 	localChainGenesisBlock := c.blockchain.GenesisBlock().Hash().Bytes()
 	remoteChainStatus := pmes.ChainStatusMsg
 	if remoteChainStatus == nil {
+		c.peers.Unregister(peerID)
 		return nil, errEmptyMsgContent
 	}
 	if localChainID != remoteChainStatus.ChainID ||
 		!bytes.Equal(localChainGenesisBlock, remoteChainStatus.GenesisBlockHash) {
+		c.peers.Unregister(peerID)
 		return nil, errors.Errorf("remote node %s is in different chain", p.String())
 	}
-	if bytes.Equal(localChainTD, remoteChainStatus.Td) &&
-		bytes.Equal(localChainCurrentBlockHash, remoteChainStatus.CurrentBlockHash) {
-		return nil, nil
-	}
 
-	var (
-		startNum  = uint64(0)
-		endNum    = uint64(0)
-		skipNum   = []uint64{}
-		direction = false
-		resp      = new(Message)
-	)
-	remoteCurrentBlockNum := remoteChainStatus.CurrentBlockNum
+	// set head and td for this peer
+	remoteHeadHash := common.BytesToHash(remoteChainStatus.CurrentBlockHash)
+	remoteTD := new(big.Int).SetBytes(remoteChainStatus.Td)
+	c.peers.Peer(peerID).SetHead(remoteHeadHash, remoteTD)
 
-	// local node falls behind, should send get block headers msg
-	if localChainCurrentBlockNum < remoteCurrentBlockNum {
-		startNum = localChainCurrentBlockNum + 1
-		endNum = remoteCurrentBlockNum
-
-		// TODO: checkout local receive broadcast block that between startNum and endNum
-		direction = false
-		getBlockHeadersMsg := &GetBlockHeadersMsg{
-			StartNum:  startNum,
-			EndNum:    endNum,
-			SkipNum:   skipNum,
-			Direction: direction,
-		}
-		resp = NewMessage(Message_GET_BLOCK_HEADERS, getBlockHeadersMsg)
-	}
-
-	// remote node falls behind, should send new block hashes msg
-	if localChainCurrentBlockNum > remoteCurrentBlockNum {
-		// TODO: iterator prev from current block , find block hash until the remote block num
-		newBlockHashesMsg := &DataMsg{
-			Data: [][]byte{},
-		}
-		resp = NewMessage(Message_NEW_BLOCK_HASHS, newBlockHashesMsg)
-	}
-
-	return resp, nil
+	return nil, nil
 }
 
 func (c *Chain) handleGetBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
@@ -340,7 +314,7 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 
 			// maybe request this block from peers if local hasn't。
 			//log.Error("failed to get header %s from local", hash.String())
-			thisPeerID := fmt.Sprintf("%x", p.PublicKey[:8])
+			thisPeerID := hex.EncodeToString(p.PublicKey)
 			for _, peer := range c.peers.peers {
 				if peer.ID != thisPeerID {
 
@@ -393,7 +367,7 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		fmt.Println("反序列化接收到new block里的Difficulty消息：%v", receiveBlock.Difficulty())
 
 		// mark remote peer hash known this block
-		id := fmt.Sprintf("%x", p.PublicKey[:8])
+		id := hex.EncodeToString(p.PublicKey)
 		c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
 
 		// fmt.Printf(`

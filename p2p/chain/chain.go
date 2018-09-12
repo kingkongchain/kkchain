@@ -2,10 +2,11 @@ package chain
 
 import (
 	"context"
-	"fmt"
 	"math"
 
 	"math/big"
+
+	"encoding/hex"
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/common"
@@ -136,15 +137,17 @@ func (c *Chain) Connected(conn p2p.Conn) {
 	}
 	chainID := c.blockchain.ChainID()
 
-	// TODO: retrive local current block td
-	td := new(big.Int).Bytes()
+	td := currentBlock.Td
+	if td == nil {
+		td = new(big.Int).SetInt64(2)
+	}
 	currentBlockHash := currentBlock.Hash().Bytes()
 	currentBlockNum := currentBlock.NumberU64()
 	genesisBlockHash := c.blockchain.GenesisBlock().Hash().Bytes()
 
 	chainMsg := &ChainStatusMsg{
 		ChainID:          chainID,
-		Td:               td,
+		Td:               td.Bytes(),
 		CurrentBlockHash: currentBlockHash,
 		CurrentBlockNum:  currentBlockNum,
 		GenesisBlockHash: genesisBlockHash,
@@ -160,7 +163,7 @@ func (c *Chain) Disconnected(conn p2p.Conn) {
 	log.Infof("a disconn is notified,remote ID: %s", conn.RemotePeer())
 	c.peers.lock.Lock()
 	defer c.peers.lock.Unlock()
-	id := fmt.Sprintf("%x", conn.RemotePeer().PublicKey[:8])
+	id := hex.EncodeToString(conn.RemotePeer().PublicKey)
 	c.peers.Unregister(id)
 }
 

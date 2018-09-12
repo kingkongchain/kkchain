@@ -10,6 +10,8 @@ import (
 
 	"encoding/json"
 
+	"encoding/hex"
+
 	"github.com/deckarep/golang-set"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
@@ -62,7 +64,9 @@ type peer struct {
 func NewPeer(conn p2p.Conn) *peer {
 	return &peer{
 		conn:        conn,
-		ID:          fmt.Sprintf("%x", conn.RemotePeer().PublicKey[:8]),
+		head:        common.Hash{},
+		td:          new(big.Int).SetInt64(1),
+		ID:          hex.EncodeToString(conn.RemotePeer().PublicKey),
 		knownTxs:    mapset.NewSet(),
 		knownBlocks: mapset.NewSet(),
 		queuedTxs:   make(chan []*types.Transaction, maxQueuedTxs),
