@@ -39,6 +39,8 @@ type Chain struct {
 	mineBlockSub event.Subscription
 
 	newMinedBlockCh chan core.NewMinedBlockEvent
+
+	acceptTxs uint32 // Flag whether we're considered synchronised (enables transaction processing)
 }
 
 // New creates a new Chain object
@@ -260,3 +262,13 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 		log.Info("*****Send block Suceess.Announced block", "hash", hash, "recipients", len(peers))
 	}
 }
+
+// // Blockchain returns the target blockchain
+// func (c *Chain) Blockchain() {
+// 	return c.blockchain
+// }
+
+// // Peers returns the active peers
+// func (c *Chain) Peers() {
+// 	return c.peers
+// }

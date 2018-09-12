@@ -20,6 +20,8 @@ import (
 
 var (
 	errEmptyMsgContent = errors.New("empty msg content")
+	softResponseLimit = 2 * 1024 * 1024 // Target maximum size of returned blocks, headers or node data.
+	estHeaderJsonSize  = 500             // Approximate size of an RLP encoded block header
 )
 
 // chainHandler specifies the signature of functions that handle DHT messages.
@@ -47,6 +49,10 @@ func (c *Chain) handlerForMsgType(t Message_Type) chainHandler {
 		return c.handleNewBlockHashs
 	case Message_NEW_BLOCK:
 		return c.handleNewBlock
+	case Message_GET_BLOCKS:
+		return c.handleGetBlocks
+	case Message_BLOCKS:
+		return c.handleBlocks
 	default:
 		return nil
 	}
@@ -133,32 +139,99 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 		return nil, errEmptyMsgContent
 	}
 
-	hasSkipped := func(skip []uint64, num uint64) bool {
-		for _, skipNum := range skip {
-			if skipNum == num {
-				return true
+	hashMode := len(msg.StartHash) == common.types.HashLength
+	first := true
+	maxNonCanonical := uint64(100)
+
+	// Gather headers until the fetch or network limits is reached
+	var (
+		bytes   common.StorageSize
+		headers []*types.Header
+		unknown bool
+	)
+
+	originNum := msg.StartNum
+	originHash := msg.StartHash
+
+	for !unknown && len(headers) < int(msg.Amount) && bytes < softResponseLimit && len(headers) < MaxHeaderFetch {
+		// Retrieve the next header satisfying the query
+		var origin *types.Header
+		if hashMode {
+			if first {
+				first = false
+				origin = c.blockchain.GetHeaderByHash(msg.StartHash)
+				if origin != nil {
+					originNum = origin.Number.Uint64()
+				}
+			} else {
+				origin = c.blockchain.GetHeader(originHash, originNum)
 			}
+		} else {
+			origin = c.blockchain.GetHeaderByNumber(originNum)
 		}
-		return false
+		if origin == nil {
+			break
+		}
+		headers = append(headers, origin)
+		bytes += estHeaderJsonSize
+
+		// Advance to the next header of the query
+		switch {
+		case hashMode && msg.Reverse:
+			// Hash based traversal towards the genesis block
+			ancestor := msg.Skip + 1
+			if ancestor == 0 {
+				unknown = true
+			} else {
+				originHash, originNum = c.blockchain.GetAncestor(originHash, originNum, ancestor, &maxNonCanonical)
+				unknown = (originHash == common.Hash{})
+			}
+		case hashMode && !msg.Reverse:
+			// Hash based traversal towards the leaf block
+			var (
+				current = origin.Number.Uint64()
+				next    = current + msg.Skip + 1
+			)
+			if next <= current {
+				infos, _ := json.MarshalIndent(p.Peer.Info(), "", "  ")
+				log.Warn("GetBlockHeaders skip overflow attack", "current", current, "skip", msg.Skip, "next", next, "attacker", infos)
+				unknown = true
+			} else {
+				if header := c.blockchain.GetHeaderByNumber(next); header != nil {
+					nextHash := header.Hash()
+					expOldHash, _ := c.blockchain.GetAncestor(nextHash, next, msg.Skip+1, &maxNonCanonical)
+					if expOldHash == originHash {
+						originHash, originNum = nextHash, next
+					} else {
+						unknown = true
+					}
+				} else {
+					unknown = true
+				}
+			}
+		case msg.Reverse:
+			// Number based traversal towards the genesis block
+			if originNum >= msg.Skip+1 {
+				originNum -= msg.Skip + 1
+			} else {
+				unknown = true
+			}
+
+		case !msg.Reverse:
+			// Number based traversal towards the leaf block
+			originNum += msg.Skip + 1
+		}
 	}
 
 	// append headers from local blockchain
 	headerBytes := [][]byte{}
-	for i := msg.StartNum; i <= msg.EndNum; i++ {
-		if len(msg.SkipNum) > 0 && hasSkipped(msg.SkipNum, i) {
-			continue
-		}
-		header := c.blockchain.GetHeaderByNumber(i)
-		if header == nil {
-			log.Error("failed to get header %d from local,error: %v", i, err)
-			continue
-		}
+	for _, header := range headers {
 		hbytes, err := json.Marshal(header)
 		if err != nil {
-			log.Error("failed to marshal block header %d to bytes,error: %v", i, err)
-			continue
+			log.Error("failed to marshal block header %d to bytes", i)
+			continue // FIXME: pass through?
 		}
-		headerBytes = append(headerBytes, hbytes)
+		headerBytes = append(headerBytes, hbytes)	
 	}
 
 	// response block headers msg
@@ -432,4 +505,15 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 
 	// no resp
 	return nil, nil
+}
+
+func (c *Chain) handleGetBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
+	var resp *Message
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
+
+	// TODO
+	return resp, nil
 }

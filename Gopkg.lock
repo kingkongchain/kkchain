@@ -14,6 +14,12 @@
   version = "v1.1.1"
 
 [[projects]]
+  name = "github.com/deckarep/golang-set"
+  packages = ["."]
+  revision = "1d4478f51bed434f1dadf96dcd9b43aabac66795"
+  version = "v1.7"
+
+[[projects]]
   branch = "master"
   name = "github.com/edsrzf/mmap-go"
   packages = ["."]
@@ -310,6 +316,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "8f815af0baa6e86c4eb34e50bb069b23c4471eb93c0ce7375b68bc9a08988f9c"
+  inputs-digest = "d5fcdb60933716bccc3e4b110f4f1accaf6f1f9710c11e3287bf2f4059a68fc8"
   solver-name = "gps-cdcl"
   solver-version = 1
