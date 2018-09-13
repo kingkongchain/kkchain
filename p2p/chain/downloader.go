@@ -1,32 +1,33 @@
 package chain
 
 import (
-	"fmt"
-	"time"
-	"sync"
 	"errors"
+	"fmt"
+	"sync"
 	"sync/atomic"
+	"time"
+
+	"math/big"
 
 	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/event"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
-	"math/big"
+	"github.com/invin/kkchain/event"
 )
 
 var (
-	MaxHashFetch    = 512 // Amount of hashes to be fetched per retrieval request
-	MaxBlockFetch   = 128 // Amount of blocks to be fetched per retrieval request
-	MaxBlockPerSync = 128*20 // FIXME: Amount of blocks to be fetched per seesion
-	MaxHeaderFetch  = 192 // Amount of block headers to be fetched per retrieval request
-	MaxSkeletonSize = 128 // Number of header fetches to need for a skeleton assembly
-	MaxBodyFetch    = 128 // Amount of block bodies to be fetched per retrieval request
+	MaxHashFetch    = 512      // Amount of hashes to be fetched per retrieval request
+	MaxBlockFetch   = 128      // Amount of blocks to be fetched per retrieval request
+	MaxBlockPerSync = 128 * 20 // FIXME: Amount of blocks to be fetched per seesion
+	MaxHeaderFetch  = 192      // Amount of block headers to be fetched per retrieval request
+	MaxSkeletonSize = 128      // Number of header fetches to need for a skeleton assembly
+	MaxBodyFetch    = 128      // Amount of block bodies to be fetched per retrieval request
 
-	rttMinEstimate   = 2 * time.Second          // Minimum round-trip time to target for download requests
-	rttMaxEstimate   = 20 * time.Second         // Maximum round-trip time to target for download requests
-	rttMinConfidence = 0.1                      // Worse confidence factor in our estimated RTT value
-	ttlScaling       = 3                        // Constant scaling factor for RTT -> TTL conversion
-	ttlLimit         = time.Minute              // Maximum TTL allowance to prevent reaching crazy timeouts
+	rttMinEstimate   = 2 * time.Second  // Minimum round-trip time to target for download requests
+	rttMaxEstimate   = 20 * time.Second // Maximum round-trip time to target for download requests
+	rttMinConfidence = 0.1              // Worse confidence factor in our estimated RTT value
+	ttlScaling       = 3                // Constant scaling factor for RTT -> TTL conversion
+	ttlLimit         = time.Minute      // Maximum TTL allowance to prevent reaching crazy timeouts
 )
 
 var (
@@ -55,17 +56,18 @@ var (
 )
 
 // peerDropFn is a callback type for dropping a peer detected as malicious.
-type peerDropFn func(id string)
+//type peerDropFn func(id string)
 
 type SyncMode int
+
 // SyncMode represents the synchronization mode of downloader
 const (
-	FullSync	= iota
+	FullSync = iota
 )
 
 const (
-	MaxIterations			= 192
-	BlocksPerIteration 		= 128
+	MaxIterations      = 192
+	BlocksPerIteration = 128
 )
 
 type dataPack interface {
@@ -91,33 +93,33 @@ type blockPack struct {
 }
 
 func (b *blockPack) PeerID() string { return b.peerID }
-func (b *blockPack) Items() int { return len(b.blocks) }
-func (b *blockPack) Stats() string { return fmt.Sprintf("%d", len(b.blocks)) }
+func (b *blockPack) Items() int     { return len(b.blocks) }
+func (b *blockPack) Stats() string  { return fmt.Sprintf("%d", len(b.blocks)) }
 
 // Downloader is the package for downloading blocks from remote peers
 type Downloader struct {
-	chain *Chain
+	chain      *Chain
 	blockchain *core.BlockChain
-	mode SyncMode // Synchronization mode defining the strategy used (per sync cycle)
+	mode       SyncMode // Synchronization mode defining the strategy used (per sync cycle)
 
 	startFeed event.Feed // Event feeder to announce sync start event
-	doneFeed event.Feed // Event feeder to announce sync stop event
+	doneFeed  event.Feed // Event feeder to announce sync stop event
 
-	pending []*types.Block // Blocks waiting for inserting to blockchain
-	headerCh chan dataPack // Channel receiving inbound block headers
-	blockCh chan dataPack // Channel receiving inbound blocks
-	dropPeer peerDropFn // Drops a peer for misbehaving
+	pending  []*types.Block // Blocks waiting for inserting to blockchain
+	headerCh chan dataPack  // Channel receiving inbound block headers
+	blockCh  chan dataPack  // Channel receiving inbound blocks
+	dropPeer peerDropFn     // Drops a peer for misbehaving
 
-	synchronising   int32 // Flag indicating if we're synchronizing or not
-	cancelPeer string         // Identifier of the peer currently being used as the master (cancel on drop)
-	cancelCh   chan struct{}  // Channel to cancel mid-flight syncs
-	cancelLock sync.RWMutex   // Lock to protect the cancel channel and peer in delivers
+	synchronising int32         // Flag indicating if we're synchronizing or not
+	cancelPeer    string        // Identifier of the peer currently being used as the master (cancel on drop)
+	cancelCh      chan struct{} // Channel to cancel mid-flight syncs
+	cancelLock    sync.RWMutex  // Lock to protect the cancel channel and peer in delivers
 
 	// Statistics
 	syncStatsChainOrigin uint64 // Origin block number where syncing started at
 	syncStatsChainHeight uint64 // Highest block number known when syncing started
 	// syncStatsState       stateSyncStats
-	syncStatsLock        sync.RWMutex // Lock protecting the sync stats fields
+	syncStatsLock sync.RWMutex // Lock protecting the sync stats fields
 
 	quitCh   chan struct{} // Quit channel to signal termination
 	quitLock sync.RWMutex  // Lock to prevent double closes
@@ -126,7 +128,7 @@ type Downloader struct {
 // NewDownloader creates a downloader object
 func NewDownloader(chain *Chain) *Downloader {
 	return &Downloader{
-		chain: chain,
+		chain:      chain,
 		blockchain: chain.blockchain,
 	}
 }
@@ -168,12 +170,12 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 	defer atomic.StoreInt32(&d.synchronising, 0)
 
 	// reset innel stats
-	d.pending = make([]*types.Block, 0, MaxIterations * BlocksPerIteration) 
+	d.pending = make([]*types.Block, 0, MaxIterations*BlocksPerIteration)
 
 	// drain in-flight channels
 	for empty := false; !empty; {
 		select {
-		case <- d.blockCh:
+		case <-d.blockCh:
 		default:
 			empty = true
 		}
@@ -191,7 +193,7 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 	d.mode = mode
 
 	// Retrieve the origin peer and initiate the downloading process
-	p := d.chain.peers.Peer(id) //TODO: 
+	p := d.chain.peers.Peer(id) //TODO:
 	if p == nil {
 		return errUnknownPeer
 	}
@@ -235,8 +237,8 @@ func (d *Downloader) syncWithPeer(p *peer, hash common.Hash, td *big.Int) (err e
 	d.syncStatsChainHeight = height
 	d.syncStatsLock.Unlock()
 
-	// TODO: concurrent 
-	if err = d.fetchBlocks(p,  origin+1); err == nil {
+	// TODO: concurrent
+	if err = d.fetchBlocks(p, origin+1); err == nil {
 		err = d.importBlocks()
 	}
 
@@ -391,7 +393,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 					continue
 				}
 				// Otherwise check if we already know the header or not
-				if (d.mode == FullSync && d.blockchain.HasBlock(headers[i].Hash(), headers[i].Number.Uint64())) {
+				if d.mode == FullSync && d.blockchain.HasBlock(headers[i].Hash(), headers[i].Number.Uint64()) {
 					number, hash = headers[i].Number.Uint64(), headers[i].Hash()
 
 					// If every header is known, even future ones, the peer straight out lied about its head
@@ -455,7 +457,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 				arrived = true
 
 				// Modify the search interval based on the response
-				if (d.mode == FullSync && !d.blockchain.HasBlock(headers[0].Hash(), headers[0].Number.Uint64())) {
+				if d.mode == FullSync && !d.blockchain.HasBlock(headers[0].Hash(), headers[0].Number.Uint64()) {
 					end = check
 					break
 				}
@@ -490,8 +492,8 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 	defer log.Debug("Block download terminated")
 
 	request := time.Now()
-	timeout := time.NewTimer(0) 	// timer to dump a non-responsive active peer
-	<- timeout.C					// timeout channel should be initially empty
+	timeout := time.NewTimer(0) // timer to dump a non-responsive active peer
+	<-timeout.C                 // timeout channel should be initially empty
 	defer timeout.Stop()
 
 	var ttl time.Duration
@@ -509,10 +511,10 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 
 	for {
 		select {
-		case <- d.cancelCh:
+		case <-d.cancelCh:
 			return errCancelBlockFetch
-		
-		case packet := <- d.blockCh:
+
+		case packet := <-d.blockCh:
 			// Make sure the active peer is giving us the skeleton headers
 			if packet.PeerID() != p.ID {
 				log.Debug("Received block from incorrect peer", "peer", packet.PeerID())
@@ -530,7 +532,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 			blocks := packet.(*blockPack).blocks
 			if len(blocks) > 0 {
 				log.Debug("Received blocks", "count", len(blocks))
-				
+
 				d.pending = append(d.pending, blocks...)
 				from += uint64(len(blocks))
 			}
@@ -542,7 +544,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 				return nil
 			}
 
-		case <- timeout.C:
+		case <-timeout.C:
 			if d.dropPeer == nil {
 				// The dropPeer method is nil when `--copydb` is used for a local copy.
 				// Timeouts can occur if e.g. compaction hits at the wrong time, and can be ignored
@@ -552,7 +554,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 			// Header retrieval timed out, consider the peer bad and drop
 			log.Debug("Header request timed out", "elapsed", ttl)
 			d.dropPeer(p.ID)
-			
+
 			return errBadPeer
 		}
 	}

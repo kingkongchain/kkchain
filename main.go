@@ -50,6 +50,7 @@ func main() {
 	configpath := flag.String("c", "", "")
 	mineFlag := flag.String("m", "mineFlag", "true is mine")
 	fakeFlag := flag.String("f", "fakeMineFlag", "true is fake mine")
+	nodeName := flag.String("n", "nodeName", "this param will use for setting CacheDir and DatasetDir when application sets normal mining mode")
 	flag.Parse()
 	log.Info("configpath:", *configpath)
 	Init(configpath)
@@ -66,7 +67,7 @@ func main() {
 	}
 	log.Info("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
 
-	engine := newEngine(fakeFlag)
+	engine := newEngine(fakeFlag, *nodeName)
 	chain, _ := core.NewBlockChain(chainDb, engine)
 
 	go func() {
@@ -128,7 +129,7 @@ func doP2P(bc *core.BlockChain, port, keypath string) {
 
 }
 
-func newEngine(fakeFlag *string) consensus.Engine {
+func newEngine(fakeFlag *string, nodeName string) consensus.Engine {
 	home := os.Getenv("HOME")
 	if home == "" {
 		if user, err := user.Current(); err == nil {
@@ -141,10 +142,10 @@ func newEngine(fakeFlag *string) consensus.Engine {
 		engine = pow.NewFakeDelayer(fakedelay)
 	} else {
 		powconfig := pow.Config{
-			CacheDir:       "ethash",
+			CacheDir:       "ethash/" + nodeName,
 			CachesInMem:    2,
 			CachesOnDisk:   3,
-			DatasetDir:     filepath.Join(home, ".ethash"),
+			DatasetDir:     filepath.Join(home, ".ethash/"+nodeName),
 			DatasetsInMem:  1,
 			DatasetsOnDisk: 2,
 			PowMode:        pow.ModeNormal,
