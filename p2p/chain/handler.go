@@ -537,9 +537,7 @@ func (c *Chain) handleBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *M
 		blocks = append(blocks, receiveBlock)
 	}
 
-	if len(blocks) > 0 {
-		c.syncer.DeliverBlocks(pid, blocks)
-	}
+	c.syncer.DeliverBlocks(pid, blocks)
 
 	// no resp
 	return nil, nil
