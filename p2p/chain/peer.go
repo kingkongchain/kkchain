@@ -224,10 +224,10 @@ func (p *peer) AsyncSendTransactions(txs []*types.Transaction) {
 func (p *peer) requestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool) error {
 	log.Debug("Fetching batch of headers", "count", amount, "fromhash", origin, "skip", skip, "reverse", reverse)
 	msg := GetBlockHeadersMsg{
-		StartHash: origin,
-		Amount: uint64(amount),
-		Skip: uint64(skip),
-		Reverse: reverse,
+		StartHash: origin.Bytes(),
+		Amount:    uint64(amount),
+		Skip:      uint64(skip),
+		Reverse:   reverse,
 	}
 	return p.conn.SendChainMsg(int32(Message_GET_BLOCK_HEADERS), msg)
 }
@@ -238,20 +238,20 @@ func (p *peer) requestHeadersByNumber(origin uint64, amount int, skip int, rever
 	log.Debug("Fetching batch of headers", "count", amount, "fromnum", origin, "skip", skip, "reverse", reverse)
 	msg := GetBlockHeadersMsg{
 		StartNum: origin,
-		Amount: uint64(amount),
-		Skip: uint64(skip),
-		Reverse: reverse,
+		Amount:   uint64(amount),
+		Skip:     uint64(skip),
+		Reverse:  reverse,
 	}
 	return p.conn.SendChainMsg(int32(Message_GET_BLOCK_HEADERS), msg)
 }
 
 // requestBlocksByNumber fetches a batch of blocks corresponding to the
-// specified range 
+// specified range
 func (p *peer) requestBlocksByNumber(origin uint64, amount int) error {
 	log.Debug("Fetching batch of blocks", "count", amount, "fromnum", origin)
 	msg := GetBlocksMsg{
 		StartNum: origin,
-		Amount: uint64(amount),
+		Amount:   uint64(amount),
 	}
 	return p.conn.SendChainMsg(int32(Message_GET_BLOCKS), msg)
 }

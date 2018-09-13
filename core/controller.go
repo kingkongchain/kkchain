@@ -6,9 +6,9 @@ import (
 
 // Controller managers all the submodules.
 type Controller struct {
-	txsCh	chan NewTxsEvent
-	txPool
-	blockchain	*BlockChain		
+	txsCh chan NewTxsEvent
+	TxPool
+	blockchain *BlockChain
 }
 
 // NewController creates a new controller object
@@ -32,4 +32,3 @@ func (c *Controller) Stop() {
 func (c *Controller) Blockchain() *BlockChain {
 	return c.blockchain
 }
-

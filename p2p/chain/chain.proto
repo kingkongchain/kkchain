@@ -74,6 +74,7 @@ message Message {
     ChainStatusMsg chainStatusMsg = 2;
     GetBlockHeadersMsg getBlockHeadersMsg = 3;
     DataMsg dataMsg = 4;
+    GetBlocksMsg getBlocksMsg = 5;
 }
 
 
