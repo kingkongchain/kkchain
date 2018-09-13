@@ -99,9 +99,11 @@ type Downloader struct {
 	chain *Chain
 	blockchain *core.BlockChain
 	mode SyncMode // Synchronization mode defining the strategy used (per sync cycle)
-	feed event.Feed // Event feeder to announce sync operation events
 
-	pending []*types.Block
+	startFeed event.Feed // Event feeder to announce sync start event
+	doneFeed event.Feed // Event feeder to announce sync stop event
+
+	pending []*types.Block // Blocks waiting for inserting to blockchain
 	headerCh chan dataPack // Channel receiving inbound block headers
 	blockCh chan dataPack // Channel receiving inbound blocks
 	dropPeer peerDropFn // Drops a peer for misbehaving
@@ -201,15 +203,11 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 // specified peer and head hash.
 func (d *Downloader) syncWithPeer(p *peer, hash common.Hash, td *big.Int) (err error) {
 	// TODO: tomorrow
-	d.feed.Send(StartEvent{})
+	d.startFeed.Send(StartEvent{})
 
 	defer func() {
 		// reset on error
-		if err != nil {
-			d.feed.Send(FailedEvent{err})
-		} else {
-			d.feed.Send(DoneEvent{})
-		}
+		d.doneFeed.Send(DoneEvent{err})
 	}()
 
 	log.Debug("Synchronising with the network", "peer", p.ID, "head", hash, "td", td, "mode", d.mode)
@@ -292,7 +290,7 @@ func (d *Downloader) fetchHeight(p *peer) (*types.Header, error) {
 
 	// Request the advertised remote head block and wait for the response
 	head, _ := p.Head()
-	go peer.requestHeadersByHash(head, 1, 0, false)
+	go p.requestHeadersByHash(head, 1, 0, false)
 
 	ttl := d.requestTTL()
 	timeout := time.After(ttl)
@@ -353,7 +351,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 	if count > limit {
 		count = limit
 	}
-	go peer.requestHeadersByNumber(uint64(from), int(count), 15, false)
+	go p.requestHeadersByNumber(uint64(from), int(count), 15, false)
 
 	// Wait for the remote response to the head fetch
 	number, hash := uint64(0), common.Hash{}
@@ -434,7 +432,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 		ttl := d.requestTTL()
 		timeout := time.After(ttl)
 
-		go peer.requestHeadersByNumber(check, 1, 0, false)
+		go p.requestHeadersByNumber(check, 1, 0, false)
 
 		// Wait until a reply arrives to this request
 		for arrived := false; !arrived; {
@@ -457,7 +455,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 				arrived = true
 
 				// Modify the search interval based on the response
-				if (d.mode == FullSync && !d.blockchain.HasBlock(headers[0].Hash(), headers[0].Number.Uint64())) || (d.mode != FullSync && !d.lightchain.HasHeader(headers[0].Hash(), headers[0].Number.Uint64())) {
+				if (d.mode == FullSync && !d.blockchain.HasBlock(headers[0].Hash(), headers[0].Number.Uint64())) {
 					end = check
 					break
 				}
@@ -492,7 +490,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 	defer log.Debug("Block download terminated")
 
 	request := time.Now()
-	timeout := time.NewTicker(0) 	// timer to dump a non-responsive active peer
+	timeout := time.NewTimer(0) 	// timer to dump a non-responsive active peer
 	<- timeout.C					// timeout channel should be initially empty
 	defer timeout.Stop()
 
@@ -503,7 +501,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 		timeout.Reset(ttl)
 
 		log.Debug("Fetching full blocks", "count", MaxBlockFetch, "from", from)
-		go peer.requestBlocksByNumber(uint64(from), int(MaxBlockFetch))
+		go p.requestBlocksByNumber(uint64(from), int(MaxBlockFetch))
 	}
 
 	// Start pulling the blocks until all is done
@@ -578,7 +576,7 @@ func (d *Downloader) importBlocks() error {
 
 	// Insert to local blockchain
 	if index, err := d.blockchain.InsertChain(d.pending); err != nil {
-		log.Debug("Downloaded item processing failed", "number", d.pending[index].Header.Number, "hash", d.pending[index].Header.Hash(), "err", err)
+		log.Debug("Downloaded item processing failed", "number", d.pending[index].NumberU64, "hash", d.pending[index].Hash, "err", err)
 		return errInvalidChain
 	}
 
@@ -596,4 +594,32 @@ func (d *Downloader) requestRTT() time.Duration {
 func (d *Downloader) requestTTL() time.Duration {
 	// FIXME: it it enough?
 	return time.Duration(10 * time.Second)
+}
+
+// DeliverHeaders injects a new batch of block headers received from a remote
+// node into the download schedule.
+func (d *Downloader) DeliverHeaders(id string, headers []*types.Header) (err error) {
+	return d.deliver(id, d.headerCh, &headerPack{id, headers})
+}
+
+// DeliverBlocks injects a new batch of block bodies received from a remote node.
+func (d *Downloader) DeliverBlocks(id string, blocks []*types.Block) (err error) {
+	return d.deliver(id, d.blockCh, &blockPack{id, blocks})
+}
+
+// deliver injects a new batch of data received from a remote node.
+func (d *Downloader) deliver(id string, destCh chan dataPack, packet dataPack) (err error) {
+	// Deliver or abort if the sync is canceled while queuing
+	d.cancelLock.RLock()
+	cancel := d.cancelCh
+	d.cancelLock.RUnlock()
+	if cancel == nil {
+		return errNoSyncActive
+	}
+	select {
+	case destCh <- packet:
+		return nil
+	case <-cancel:
+		return errNoSyncActive
+	}
 }

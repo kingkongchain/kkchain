@@ -6,9 +6,9 @@ import (
 
 // Controller managers all the submodules.
 type Controller struct {
-	txsCh chan NewTxsEvent
-	TxPool
-	blockchain *BlockChain
+	txsCh	chan NewTxsEvent
+	// txPool
+	blockchain	*BlockChain		
 }
 
 // NewController creates a new controller object

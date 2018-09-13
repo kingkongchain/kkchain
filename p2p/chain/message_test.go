@@ -28,6 +28,7 @@ func TestNewMessage(t *testing.T) {
 		Amount:    23,
 		Skip:      23,
 		Reverse:   false,
+
 	}
 	m3 := NewMessage(Message_GET_BLOCK_HEADERS, getBlockHeadersMsg)
 	fmt.Printf("\nget block headers msg: %v\n", m3)

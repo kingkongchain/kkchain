@@ -24,7 +24,7 @@ var (
 
 const (
 	softResponseLimit = 2 * 1024 * 1024 // Target maximum size of returned blocks, headers or node data.
-	estHeaderJsonSize = 500             // Approximate size of an RLP encoded block header
+	estHeaderJSONSize  = 500             // Approximate size of an RLP encoded block header
 )
 
 // chainHandler specifies the signature of functions that handle DHT messages.
@@ -148,7 +148,7 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 
 	// Gather headers until the fetch or network limits is reached
 	var (
-		bytes   common.StorageSize
+		bytes  int 
 		headers []*types.Header
 		unknown bool
 	)
@@ -176,7 +176,7 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 			break
 		}
 		headers = append(headers, origin)
-		bytes += estHeaderJsonSize
+		bytes += estHeaderJSONSize
 
 		// Advance to the next header of the query
 		switch {
@@ -273,6 +273,8 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 		return nil, errEmptyMsgContent
 	}
 
+	pid := hex.EncodeToString(p.PublicKey)
+	var headers []*types.Header
 	for _, hbytes := range msg.Data {
 		header := new(types.Header)
 		err = json.Unmarshal(hbytes, header)
@@ -281,11 +283,12 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 			continue
 		}
 		log.Info("receive header %s", header.Hash().String())
-
-		// TODO: insert received header to local chain
-
+		headers = append(headers, header)
 	}
-
+	// FIXME: is ID right?
+	if len(headers) > 0 {
+		c.syncer.DeliverHeaders(pid, headers)
+	}
 	// no response for block headers msg
 	return nil, nil
 }
@@ -424,6 +427,9 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 	if msg == nil {
 		return nil, errEmptyMsgContent
 	}
+
+	pid := hex.EncodeToString(p.PublicKey)
+	var blocks []*types.Block
 	for _, bbytes := range msg.Data {
 
 		receiveBlock := new(types.Block)
@@ -440,6 +446,9 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		// mark remote peer hash known this block
 		id := hex.EncodeToString(p.PublicKey)
 		c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
+
+		blocks = append(blocks, receiveBlock)
+		// TODO: move to fetcher
 
 		//2.insert block and post Event
 		//TODO:use queue to fetcher block data
@@ -460,6 +469,10 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		//TODO2:implement synchronise data
 		//go pm.synchronise(p)
 		//}
+	}
+
+	if len(blocks) == 1 {
+		c.syncer.NewBlock(pid, blocks[0])
 	}
 
 	// no resp
@@ -496,5 +509,38 @@ func (c *Chain) handleGetBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_
 }
 
 func (c *Chain) handleBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	return c.handleNewBlock(ctx, p, pmes)
+	log.Info("#####enter into handleBlock...")
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
+
+	pid := hex.EncodeToString(p.PublicKey)
+	var blocks []*types.Block
+	for _, bbytes := range msg.Data {
+
+		receiveBlock := new(types.Block)
+		err = json.Unmarshal(bbytes, receiveBlock)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to block,error: %v", err)
+			continue
+		}
+		fmt.Printf("反序列化接收到block里的number消息：%v", receiveBlock.Header().Number)
+		fmt.Printf("反序列化接收到block里的hash消息：%v", receiveBlock.Hash().String())
+		fmt.Printf("反序列化接收到block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
+		fmt.Printf("反序列化接收到block里的Difficulty消息：%v", receiveBlock.Difficulty())
+
+		// mark remote peer hash known this block
+		// id := hex.EncodeToString(p.PublicKey)
+		// c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
+
+		blocks = append(blocks, receiveBlock)
+	}
+
+	if len(blocks) > 0 {
+		c.syncer.DeliverBlocks(pid, blocks)
+	}
+
+	// no resp
+	return nil, nil
 }
