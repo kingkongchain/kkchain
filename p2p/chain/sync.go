@@ -16,9 +16,8 @@ const (
 )
 
 const (
-	Inited = iota
+	Stopped = iota
 	Started
-	Stopped
 )
 
 // Syncer represents syncer for blockchain.
@@ -84,7 +83,12 @@ func (s *Syncer) Start() error {
 
 // synchronise tries to synchronise with best peer
 func (s *Syncer) synchronise(p *peer) {
-	log.Info("start synchonise with ", p)
+	// Short circuit if no peers are available
+	if p == nil {
+		return
+	}
+
+	log.Info("start synchonise with ", p.ID)
 	// Make sure the peer's TD is higher than our own
 	currentBlock := s.blockchain.CurrentBlock()
 	td := s.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
