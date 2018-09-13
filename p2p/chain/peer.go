@@ -12,7 +12,7 @@ import (
 
 	"encoding/hex"
 
-	"github.com/deckarep/golang-set"
+	mapset "github.com/deckarep/golang-set"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
@@ -46,6 +46,11 @@ const (
 
 	handshakeTimeout = 5 * time.Second
 )
+
+type hashOrNumber struct {
+	Hash   common.Hash // Block hash from which to retrieve headers (excludes Number)
+	Number uint64      // Block hash from which to retrieve headers (excludes Hash)
+}
 
 type peer struct {
 	ID          string
@@ -212,6 +217,43 @@ func (p *peer) AsyncSendTransactions(txs []*types.Transaction) {
 	default:
 		log.Debug("Dropping transaction propagation", "count", len(txs))
 	}
+}
+
+// requestHeadersByHash fetches a batch of blocks' headers corresponding to the
+// specified header query, based on the hash of an origin block.
+func (p *peer) requestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool) error {
+	log.Debug("Fetching batch of headers", "count", amount, "fromhash", origin, "skip", skip, "reverse", reverse)
+	msg := GetBlockHeadersMsg{
+		StartHash: origin.Bytes(),
+		Amount:    uint64(amount),
+		Skip:      uint64(skip),
+		Reverse:   reverse,
+	}
+	return p.conn.SendChainMsg(int32(Message_GET_BLOCK_HEADERS), msg)
+}
+
+// requestHeadersByNumber fetches a batch of blocks' headers corresponding to the
+// specified header query, based on the number of an origin block.
+func (p *peer) requestHeadersByNumber(origin uint64, amount int, skip int, reverse bool) error {
+	log.Debug("Fetching batch of headers", "count", amount, "fromnum", origin, "skip", skip, "reverse", reverse)
+	msg := GetBlockHeadersMsg{
+		StartNum: origin,
+		Amount:   uint64(amount),
+		Skip:     uint64(skip),
+		Reverse:  reverse,
+	}
+	return p.conn.SendChainMsg(int32(Message_GET_BLOCK_HEADERS), msg)
+}
+
+// requestBlocksByNumber fetches a batch of blocks corresponding to the
+// specified range
+func (p *peer) requestBlocksByNumber(origin uint64, amount int) error {
+	log.Debug("Fetching batch of blocks", "count", amount, "fromnum", origin)
+	msg := GetBlocksMsg{
+		StartNum: origin,
+		Amount:   uint64(amount),
+	}
+	return p.conn.SendChainMsg(int32(Message_GET_BLOCKS), msg)
 }
 
 type PeerSet struct {

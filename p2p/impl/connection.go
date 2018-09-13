@@ -244,10 +244,20 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 
 // TODO:
 // only use for chain request
-func (c *Connection) SendChainMsg(msgType int32, data [][]byte) error {
-	newMsg := &chain.DataMsg{
-		Data: data,
+func (c *Connection) SendChainMsg(msgType int32, msgData interface{}) error {
+	switch msgData.(type) {
+	case [][]byte:
+		newMsg := &chain.DataMsg{
+			Data: msgData.([][]byte),
+		}
+		msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
+		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+	case chain.GetBlockHeadersMsg:
+		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(chain.GetBlockHeadersMsg))
+		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+	case chain.GetBlocksMsg:
+		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(chain.GetBlocksMsg))
+		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
 	}
-	msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
-	return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+	return nil
 }

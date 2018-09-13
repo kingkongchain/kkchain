@@ -22,6 +22,11 @@ var (
 	errEmptyMsgContent = errors.New("empty msg content")
 )
 
+const (
+	softResponseLimit = 2 * 1024 * 1024 // Target maximum size of returned blocks, headers or node data.
+	estHeaderJSONSize  = 500             // Approximate size of an RLP encoded block header
+)
+
 // chainHandler specifies the signature of functions that handle DHT messages.
 type chainHandler func(context.Context, p2p.ID, *Message) (*Message, error)
 
@@ -47,6 +52,10 @@ func (c *Chain) handlerForMsgType(t Message_Type) chainHandler {
 		return c.handleNewBlockHashs
 	case Message_NEW_BLOCK:
 		return c.handleNewBlock
+	case Message_GET_BLOCKS:
+		return c.handleGetBlocks
+	case Message_BLOCKS:
+		return c.handleBlocks
 	default:
 		return nil
 	}
@@ -133,30 +142,96 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 		return nil, errEmptyMsgContent
 	}
 
-	hasSkipped := func(skip []uint64, num uint64) bool {
-		for _, skipNum := range skip {
-			if skipNum == num {
-				return true
+	hashMode := len(msg.StartHash) == common.HashLength
+	first := true
+	maxNonCanonical := uint64(100)
+
+	// Gather headers until the fetch or network limits is reached
+	var (
+		bytes  int 
+		headers []*types.Header
+		unknown bool
+	)
+
+	originNum := msg.StartNum
+	originHash := common.BytesToHash(msg.StartHash)
+
+	for !unknown && len(headers) < int(msg.Amount) && bytes < softResponseLimit && len(headers) < MaxHeaderFetch {
+		// Retrieve the next header satisfying the query
+		var origin *types.Header
+		if hashMode {
+			if first {
+				first = false
+				origin = c.blockchain.GetHeaderByHash(originHash)
+				if origin != nil {
+					originNum = origin.Number.Uint64()
+				}
+			} else {
+				origin = c.blockchain.GetHeader(originHash, originNum)
 			}
+		} else {
+			origin = c.blockchain.GetHeaderByNumber(originNum)
 		}
-		return false
+		if origin == nil {
+			break
+		}
+		headers = append(headers, origin)
+		bytes += estHeaderJSONSize
+
+		// Advance to the next header of the query
+		switch {
+		case hashMode && msg.Reverse:
+			// Hash based traversal towards the genesis block
+			ancestor := msg.Skip + 1
+			if ancestor == 0 {
+				unknown = true
+			} else {
+				originHash, originNum = c.blockchain.GetAncestor(originHash, originNum, ancestor, &maxNonCanonical)
+				unknown = (originHash == common.Hash{})
+			}
+		case hashMode && !msg.Reverse:
+			// Hash based traversal towards the leaf block
+			var (
+				current = origin.Number.Uint64()
+				next    = current + msg.Skip + 1
+			)
+			if next <= current {
+				log.Warning("GetBlockHeaders skip overflow attack", "current", current, "skip", msg.Skip, "next", next, "attacker", p.String())
+				unknown = true
+			} else {
+				if header := c.blockchain.GetHeaderByNumber(next); header != nil {
+					nextHash := header.Hash()
+					expOldHash, _ := c.blockchain.GetAncestor(nextHash, next, msg.Skip+1, &maxNonCanonical)
+					if expOldHash == originHash {
+						originHash, originNum = nextHash, next
+					} else {
+						unknown = true
+					}
+				} else {
+					unknown = true
+				}
+			}
+		case msg.Reverse:
+			// Number based traversal towards the genesis block
+			if originNum >= msg.Skip+1 {
+				originNum -= msg.Skip + 1
+			} else {
+				unknown = true
+			}
+
+		case !msg.Reverse:
+			// Number based traversal towards the leaf block
+			originNum += msg.Skip + 1
+		}
 	}
 
 	// append headers from local blockchain
 	headerBytes := [][]byte{}
-	for i := msg.StartNum; i <= msg.EndNum; i++ {
-		if len(msg.SkipNum) > 0 && hasSkipped(msg.SkipNum, i) {
-			continue
-		}
-		header := c.blockchain.GetHeaderByNumber(i)
-		if header == nil {
-			log.Error("failed to get header %d from local,error: %v", i, err)
-			continue
-		}
+	for _, header := range headers {
 		hbytes, err := json.Marshal(header)
 		if err != nil {
-			log.Error("failed to marshal block header %d to bytes,error: %v", i, err)
-			continue
+			log.Error("failed to marshal block header %d to bytes", header.Number.Int64())
+			continue // FIXME: pass through?
 		}
 		headerBytes = append(headerBytes, hbytes)
 	}
@@ -198,6 +273,8 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 		return nil, errEmptyMsgContent
 	}
 
+	pid := hex.EncodeToString(p.PublicKey)
+	var headers []*types.Header
 	for _, hbytes := range msg.Data {
 		header := new(types.Header)
 		err = json.Unmarshal(hbytes, header)
@@ -206,11 +283,12 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 			continue
 		}
 		log.Info("receive header %s", header.Hash().String())
-
-		// TODO: insert received header to local chain
-
+		headers = append(headers, header)
 	}
-
+	// FIXME: is ID right?
+	if len(headers) > 0 {
+		c.syncer.DeliverHeaders(pid, headers)
+	}
 	// no response for block headers msg
 	return nil, nil
 }
@@ -344,14 +422,14 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 }
 
 func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-
 	log.Info("#####enter into handleNewBlock...")
-	//fmt.Println("接收到new block消息：%v", pmes.String())
-	var resp *Message
 	msg := pmes.DataMsg
 	if msg == nil {
 		return nil, errEmptyMsgContent
 	}
+
+	pid := hex.EncodeToString(p.PublicKey)
+	var blocks []*types.Block
 	for _, bbytes := range msg.Data {
 
 		receiveBlock := new(types.Block)
@@ -360,50 +438,17 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 			log.Error("failed to unmarshal bytes to block,error: %v", err)
 			continue
 		}
-		//fmt.Println("反序列化接收到new block里的header消息：%v", receiveBlock.Header())
-		fmt.Println("反序列化接收到new block里的number消息：%v", receiveBlock.Header().Number)
-		fmt.Println("反序列化接收到new block里的hash消息：%v", receiveBlock.Hash().String())
-		fmt.Println("反序列化接收到new block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
-		fmt.Println("反序列化接收到new block里的Difficulty消息：%v", receiveBlock.Difficulty())
+		fmt.Printf("反序列化接收到new block里的number消息：%v", receiveBlock.Header().Number)
+		fmt.Printf("反序列化接收到new block里的hash消息：%v", receiveBlock.Hash().String())
+		fmt.Printf("反序列化接收到new block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
+		fmt.Printf("反序列化接收到new block里的Difficulty消息：%v", receiveBlock.Difficulty())
 
 		// mark remote peer hash known this block
 		id := hex.EncodeToString(p.PublicKey)
 		c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
 
-		// fmt.Printf(`
-		// 	number: %d
-		// 	{
-		// 		hash: %s
-		// 		parent: %s
-		// 		state: %s
-		// 		diff: 0x%x
-		// 		gaslimit: %d
-		// 		gasused: %d
-		// 		nonce: 0x%x
-		// 	}`+"\n", receiveBlock.Number(), receiveBlock.Hash().String(), receiveBlock.ParentHash().String(), receiveBlock.StateRoot().String(), "00", receiveBlock.GasLimit(), receiveBlock.GasUsed(), receiveBlock.Nonce())
-
-		// TODO: insert received block to local chain
-		//var localCurrentBlock = c.blockchain.CurrentBlock()
-		//	var localCurrentBlockNum = localCurrentBlock.NumberU64()
-		//	var localCurrentBlockHash = localCurrentBlock.Hash()
-		//var localCurrentBlockParentHash = localCurrentBlock.ParentHash()
-		//	var localCurrentBlockTD = rawdb.ReadTd(c.blockchain.GetDb(), localCurrentBlockHash, localCurrentBlockNum)
-
-		//TODO:need to decode msg to get real receive block
-		//var receiveBlockNum = receiveBlock.NumberU64()
-		//var receiveBlockDifficult = receiveBlock.Difficulty()
-		//var receiveBlockHash = receiveBlock.Hash()
-		//var receiveBlockParentHash = receiveBlock.ParentHash()
-		//var receiveBlockTD = receiveBlock.DeprecatedTd()                                   //just for test
-		//var receiveParentBlockTD = new(big.Int).Sub(receiveBlockTD, receiveBlockDifficult) //just for test
-		// remoteBlock.ReceivedAt = msg.ReceivedAt
-		// remoteBlock.ReceivedFrom = p
-
-		//1. validata receive block
-		if err := c.blockchain.Validator().ValidateBody(receiveBlock); err != nil {
-			//log.Error("Validator block error:", err)
-			return resp, nil
-		}
+		blocks = append(blocks, receiveBlock)
+		// TODO: move to fetcher
 
 		//2.insert block and post Event
 		//TODO:use queue to fetcher block data
@@ -424,11 +469,75 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		//TODO2:implement synchronise data
 		//go pm.synchronise(p)
 		//}
-
-		// TODO:
-		return resp, nil
-
 	}
+
+	if len(blocks) == 1 {
+		c.syncer.NewBlock(pid, blocks[0])
+	}
+
+	// no resp
+	return nil, nil
+}
+
+func (c *Chain) handleGetBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
+	var resp *Message
+	msg := pmes.GetBlocksMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
+
+	blocks := [][]byte{}
+	for i := msg.StartNum; i <= msg.Amount; i++ {
+		block := c.blockchain.GetBlockByNumber(i)
+		if block == nil {
+			log.Warning("no block %d ", i)
+			continue
+		}
+		bbytes, err := json.Marshal(block)
+		if err != nil {
+			log.Error("failed to marshal block %s ", block.Hash().String())
+			continue
+		}
+		blocks = append(blocks, bbytes)
+	}
+
+	dataMsg := DataMsg{
+		Data: blocks,
+	}
+	resp = NewMessage(Message_BLOCKS, dataMsg)
+	return resp, nil
+}
+
+func (c *Chain) handleBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
+	log.Info("#####enter into handleBlock...")
+	msg := pmes.DataMsg
+	if msg == nil {
+		return nil, errEmptyMsgContent
+	}
+
+	pid := hex.EncodeToString(p.PublicKey)
+	var blocks []*types.Block
+	for _, bbytes := range msg.Data {
+
+		receiveBlock := new(types.Block)
+		err = json.Unmarshal(bbytes, receiveBlock)
+		if err != nil {
+			log.Error("failed to unmarshal bytes to block,error: %v", err)
+			continue
+		}
+		fmt.Printf("反序列化接收到block里的number消息：%v", receiveBlock.Header().Number)
+		fmt.Printf("反序列化接收到block里的hash消息：%v", receiveBlock.Hash().String())
+		fmt.Printf("反序列化接收到block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
+		fmt.Printf("反序列化接收到block里的Difficulty消息：%v", receiveBlock.Difficulty())
+
+		// mark remote peer hash known this block
+		// id := hex.EncodeToString(p.PublicKey)
+		// c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
+
+		blocks = append(blocks, receiveBlock)
+	}
+
+	c.syncer.DeliverBlocks(pid, blocks)
 
 	// no resp
 	return nil, nil

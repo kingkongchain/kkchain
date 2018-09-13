@@ -39,6 +39,10 @@ type Chain struct {
 	mineBlockSub event.Subscription
 
 	newMinedBlockCh chan core.NewMinedBlockEvent
+
+	acceptTxs uint32 // Flag whether we're considered synchronised (enables transaction processing)
+
+	syncer *Syncer
 }
 
 // New creates a new Chain object
@@ -55,6 +59,7 @@ func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	}
 
 	host.Register(c)
+	c.syncer = NewSyncer(c)
 
 	return c
 }
@@ -200,13 +205,14 @@ func (c *Chain) Start(maxPeers int) {
 	go c.minedBroadcastLoop()
 
 	// start sync handlers
-	// go pm.syncer()
+	go c.syncer.Start()
 	// go pm.txsyncLoop()
 }
 
 func (c *Chain) Stop() {
 	log.Info("Stopping KKChain ")
 
+	c.syncer.Stop()
 	//pm.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	c.mineBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	c.peers.Close()
@@ -260,3 +266,13 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 		log.Info("*****Send block Suceess.Announced block", "hash", hash, "recipients", len(peers))
 	}
 }
+
+// // Blockchain returns the target blockchain
+// func (c *Chain) Blockchain() {
+// 	return c.blockchain
+// }
+
+// // Peers returns the active peers
+// func (c *Chain) Peers() {
+// 	return c.peers
+// }

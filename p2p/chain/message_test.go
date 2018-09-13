@@ -24,9 +24,11 @@ func TestNewMessage(t *testing.T) {
 
 	getBlockHeadersMsg := &GetBlockHeadersMsg{
 		StartNum:  uint64(1),
-		EndNum:    uint64(100),
-		SkipNum:   []uint64{23, 45},
-		Direction: false,
+		StartHash: []byte{0x34, 0x56},
+		Amount:    23,
+		Skip:      23,
+		Reverse:   false,
+
 	}
 	m3 := NewMessage(Message_GET_BLOCK_HEADERS, getBlockHeadersMsg)
 	fmt.Printf("\nget block headers msg: %v\n", m3)
