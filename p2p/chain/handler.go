@@ -24,7 +24,7 @@ var (
 
 const (
 	softResponseLimit = 2 * 1024 * 1024 // Target maximum size of returned blocks, headers or node data.
-	estHeaderJSONSize  = 500             // Approximate size of an RLP encoded block header
+	estHeaderJSONSize = 500             // Approximate size of an RLP encoded block header
 )
 
 // chainHandler specifies the signature of functions that handle DHT messages.
@@ -126,7 +126,7 @@ func (c *Chain) handleGetBlockBodies(ctx context.Context, p p2p.ID, pmes *Messag
 		}
 		bodies = append(bodies, bbytes)
 
-		blockBodiesMsg := DataMsg{
+		blockBodiesMsg := &DataMsg{
 			Data: bodies,
 		}
 		resp = NewMessage(Message_BLOCKS_BODIES, blockBodiesMsg)
@@ -148,7 +148,7 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 
 	// Gather headers until the fetch or network limits is reached
 	var (
-		bytes  int 
+		bytes   int
 		headers []*types.Header
 		unknown bool
 	)
@@ -501,7 +501,7 @@ func (c *Chain) handleGetBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_
 		blocks = append(blocks, bbytes)
 	}
 
-	dataMsg := DataMsg{
+	dataMsg := &DataMsg{
 		Data: blocks,
 	}
 	resp = NewMessage(Message_BLOCKS, dataMsg)

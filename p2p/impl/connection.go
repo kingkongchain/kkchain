@@ -253,11 +253,11 @@ func (c *Connection) SendChainMsg(msgType int32, msgData interface{}) error {
 		}
 		msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
 		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
-	case chain.GetBlockHeadersMsg:
-		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(chain.GetBlockHeadersMsg))
+	case *chain.GetBlockHeadersMsg:
+		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(*chain.GetBlockHeadersMsg))
 		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
-	case chain.GetBlocksMsg:
-		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(chain.GetBlocksMsg))
+	case *chain.GetBlocksMsg:
+		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(*chain.GetBlocksMsg))
 		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
 	}
 	return nil
