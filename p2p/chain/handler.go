@@ -12,6 +12,8 @@ import (
 
 	"math/big"
 
+	"time"
+
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
@@ -438,37 +440,42 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 			log.Error("failed to unmarshal bytes to block,error: %v", err)
 			continue
 		}
-		fmt.Printf("反序列化接收到new block里的number消息：%v", receiveBlock.Header().Number)
-		fmt.Printf("反序列化接收到new block里的hash消息：%v", receiveBlock.Hash().String())
-		fmt.Printf("反序列化接收到new block里的ParentHash消息：%v", receiveBlock.ParentHash().String())
-		fmt.Printf("反序列化接收到new block里的Difficulty消息：%v", receiveBlock.Difficulty())
+		fmt.Printf("反序列化接收到new block里的number消息：%v\n", receiveBlock.Header().Number)
+		fmt.Printf("反序列化接收到new block里的hash消息：%v\n", receiveBlock.Hash().String())
+		fmt.Printf("反序列化接收到new block里的ParentHash消息：%v\n", receiveBlock.ParentHash().String())
+		fmt.Printf("反序列化接收到new block里的Difficulty消息：%v\n", receiveBlock.Difficulty())
+
+		// fill up receive time and origin peer
+		receiveBlock.ReceivedAt = time.Now()
+		receiveBlock.ReceivedFrom = p
 
 		// mark remote peer hash known this block
 		id := hex.EncodeToString(p.PublicKey)
-		c.peers.Peer(id).MarkBlock(receiveBlock.Hash())
+		peer := c.peers.Peer(id)
+		peer.MarkBlock(receiveBlock.Hash())
+
+		// schedule import new block
+		c.syncer.fetcher.Enqueue(id, receiveBlock)
 
 		blocks = append(blocks, receiveBlock)
-		// TODO: move to fetcher
 
-		//2.insert block and post Event
-		//TODO:use queue to fetcher block data
-		// broadcase Block
-		//TODO:implement peer broadcast
-		go c.BroadcastBlock(receiveBlock, true)
-		//insert block and post Event
-		c.blockchain.InsertChain([]*types.Block{receiveBlock})
-		// broadcase Block hash
-		go c.BroadcastBlock(receiveBlock, false)
+		var (
+			trueHead = receiveBlock.ParentHash()
+			trueTD   = new(big.Int).Sub(receiveBlock.Td, receiveBlock.Header().Difficulty)
+		)
 
-		//3.synchronise data
 		// Update the peers total difficulty if better than the previous
-		//TODO1:set peer head,manager td and block head of peer conn
-		//if _, td := p.Head(); trueTD.Cmp(td) > 0 {
-		//	p.SetHead(trueHead, trueTD)
-		//if receiveParentBlockTD.Cmp(localCurrentBlockTD) > 0 {
-		//TODO2:implement synchronise data
-		//go pm.synchronise(p)
-		//}
+		if _, td := peer.Head(); trueTD.Cmp(td) > 0 {
+			peer.SetHead(trueHead, trueTD)
+
+			// Schedule a sync if above ours. Note, this will not fire a sync for a gap of
+			// a singe block (as the true TD is below the propagated block), however this
+			// scenario should easily be covered by the fetcher.
+			currentBlock := c.blockchain.CurrentBlock()
+			if trueTD.Cmp(c.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())) > 0 {
+				go c.syncer.synchronise(peer)
+			}
+		}
 	}
 
 	if len(blocks) == 1 {
