@@ -10,6 +10,7 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/storage"
 	"github.com/invin/kkchain/rlp"
+	log "github.com/sirupsen/logrus"
 )
 
 var (

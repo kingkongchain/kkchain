@@ -8,6 +8,7 @@ import (
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/dht"
 	"github.com/invin/kkchain/p2p/handshake"
+	log "github.com/sirupsen/logrus"
 )
 
 // Host defines a host for connections

@@ -8,11 +8,8 @@ import (
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
-	"github.com/op/go-logging"
-)
-
-var (
-	logger = logging.MustGetLogger("miner")
+	logger "github.com/sirupsen/logrus"
+	
 )
 
 type Miner struct {

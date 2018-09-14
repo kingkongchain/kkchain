@@ -10,13 +10,12 @@ import (
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/dht"
 	"github.com/jbenet/goprocess"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 	"github.com/pkg/errors"
 )
 
 var (
 	errServerStopped = errors.New("server stopped")
-	log              = logging.MustGetLogger("p2p/impl")
 	MaxPeers         = 1000
 )
 

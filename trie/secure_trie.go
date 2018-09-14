@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/invin/kkchain/common"
+	log "github.com/sirupsen/logrus"
 )
 
 // SecureTrie wraps a trie with key hashing. In a secure trie, all

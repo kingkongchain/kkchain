@@ -7,7 +7,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -19,10 +19,6 @@ var (
 	errProtocol    = errors.New("wrong protocol")
 	errHandshake   = errors.New("failed to handshake")
 	errReadTimeout = errors.New("read message timeout")
-)
-
-var (
-	log = logging.MustGetLogger("p2p/handshake")
 )
 
 // Handshake implements protocol for handshaking

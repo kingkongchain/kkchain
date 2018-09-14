@@ -14,14 +14,15 @@ import (
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
 	"github.com/invin/kkchain/p2p"
-	"github.com/op/go-logging"
+	logrus "github.com/sirupsen/logrus"
 )
+
+// Create a new instance of logger
+var log = logrus.New()
 
 const (
 	protocolChain = "/kkchain/p2p/chain/1.0.0"
 )
-
-var log = logging.MustGetLogger("p2p/chain")
 
 // Chain implements protocol for chain related messages
 type Chain struct {

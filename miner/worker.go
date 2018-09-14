@@ -151,7 +151,7 @@ func (w *worker) close() {
 
 func (w *worker) waitResult() {
 	for {
-		logger.Debug("waitResult....")
+		log.Debug("waitResult....")
 		select {
 		case result := <-w.resultCh:
 			// Short circuit when receiving empty result.
@@ -199,7 +199,7 @@ func (w *worker) waitResult() {
 func (w *worker) commitTask() {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	logger.Debug("commitTask...")
+	log.Debug("commitTask...")
 	if !w.isRunning() {
 		return
 	}
@@ -287,7 +287,7 @@ func (w *worker) taskLoop() {
 		}
 	}
 	for {
-		logger.Debug("taskLoop....")
+		log.Debug("taskLoop....")
 		select {
 		case task := <-w.taskCh:
 
@@ -311,7 +311,7 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 	)
 
 	if t.block, err = w.engine.Execute(w.chain, t.block, stop); t.block != nil {
-		//logger.Info("Successfully sealed new block", "number", t.block.Number(), "hash", t.block.Hash(),
+		//log.Info("Successfully sealed new block", "number", t.block.Number(), "hash", t.block.Hash(),
 		//	"elapsed", time.Since(t.createdAt))
 
 		// fill up TD to block
@@ -328,7 +328,7 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 		res = t
 	} else {
 		if err != nil {
-			logger.Debug("Block sealing failed", "err", err)
+			log.Debug("Block sealing failed", "err", err)
 		}
 		res = nil
 	}

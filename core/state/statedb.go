@@ -11,7 +11,7 @@ import (
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/rlp"
 	"github.com/invin/kkchain/trie"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 )
 
 type revision struct {
@@ -25,8 +25,6 @@ var (
 
 	// emptyCode is the known hash of the empty EVM bytecode.
 	emptyCode = crypto.Keccak256Hash(nil)
-
-	log = logging.MustGetLogger("core/state")
 )
 
 type StateDB struct {

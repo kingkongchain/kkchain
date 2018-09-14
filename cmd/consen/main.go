@@ -16,15 +16,15 @@ import (
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/crypto/blake2b"
 	"github.com/invin/kkchain/crypto/ed25519"
-	"github.com/invin/kkchain/klogging"
 	"github.com/invin/kkchain/miner"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
-	logging "github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
+	
 )
 
-var log = logging.MustGetLogger("cmd/consensus")
+// var log = logging.MustGetLogger("cmd/consensus")
 
 // init config and loggingLoger
 func Init(path *string) {
@@ -35,8 +35,6 @@ func Init(path *string) {
 		fmt.Println("path:", *path)
 		config.Init("")
 	}
-
-	klogging.Init(config.AppConfig.Log.GetString("log.level"), config.AppConfig.Log.GetString("log.format"))
 }
 
 func main() {

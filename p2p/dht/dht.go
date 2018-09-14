@@ -11,7 +11,7 @@ import (
 
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -23,10 +23,6 @@ const (
 	DefaultSaveTableInterval   = 1 * time.Minute
 	DefaultSeedMinTableTime    = 50 * time.Second
 	DefaultMaxPeersCountToSync = 6
-)
-
-var (
-	log = logging.MustGetLogger("p2p/dht")
 )
 
 type DHTConfig struct {
