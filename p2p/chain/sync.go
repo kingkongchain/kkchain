@@ -29,16 +29,29 @@ type Syncer struct {
 	chain      *Chain
 	blockchain *core.BlockChain
 	downloader *Downloader
+	fetcher    *Fetcher
 	scope      event.SubscriptionScope
 }
 
 // NewSyncer creates a new syncer object
 func NewSyncer(chain *Chain) *Syncer {
+	bc := chain.blockchain
+	validator := func(header *types.Header) error {
+		return bc.Engine().VerifyHeader(bc, header)
+	}
+	heighter := func() uint64 {
+		return bc.CurrentBlock().NumberU64()
+	}
+	inserter := func(blocks types.Blocks) (int, error) {
+		atomic.StoreUint32(&chain.acceptTxs, 1) // Mark initial sync done on any fetcher import
+		return bc.InsertChain(blocks)
+	}
 	return &Syncer{
 		status:     Stopped,
 		chain:      chain,
 		blockchain: chain.blockchain,
 		downloader: NewDownloader(chain),
+		fetcher:    NewFetcher(bc.GetBlockByHash, validator, chain.BroadcastBlock, heighter, inserter, chain.removePeer),
 	}
 }
 
@@ -55,8 +68,8 @@ func (s *Syncer) Start() error {
 	})
 
 	loop := func(p goprocess.Process) {
-		// s.fetcher.Start()
-		// defer s.fetcher.Stop()
+		s.fetcher.Start()
+		defer s.fetcher.Stop()
 		defer s.downloader.Terminate()
 		// Wait for different events to fire synchronization operations
 		forceSync := time.NewTicker(forceSyncCycle)
