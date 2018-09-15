@@ -101,7 +101,7 @@ func (s *Syncer) synchronise(p *peer) {
 		return
 	}
 
-	log.Info("start synchonise with", p.ID)
+	log.Info("start synchonise with ", p.ID)
 	// Make sure the peer's TD is higher than our own
 	currentBlock := s.blockchain.CurrentBlock()
 	td := s.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
@@ -113,7 +113,7 @@ func (s *Syncer) synchronise(p *peer) {
 
 	// Run the sync cycle, and disable fast sync if we've went past the pivot block
 	if err := s.downloader.Synchronise(p.ID, pHead, pTd, FullSync); err != nil {
-		log.Error("Failed to sync", err)
+		log.Error("Failed to sync,error: ", err)
 		return
 	}
 
