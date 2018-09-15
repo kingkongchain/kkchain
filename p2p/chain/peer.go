@@ -52,6 +52,18 @@ type hashOrNumber struct {
 	Number uint64      // Block hash from which to retrieve headers (excludes Hash)
 }
 
+// propEvent is a block propagation, waiting for its turn in the broadcast queue.
+type propEvent struct {
+	block *types.Block
+	td    *big.Int
+}
+
+// newBlockHashesData is the network packet for the block announcements.
+type newBlockHashesData []struct {
+	Hash   common.Hash // Hash of one particular block being announced
+	Number uint64      // Number of one particular block being announced
+}
+
 type peer struct {
 	ID          string
 	conn        p2p.Conn
@@ -61,8 +73,8 @@ type peer struct {
 	knownTxs    mapset.Set                // Set of transaction hashes known to be known by this peer
 	knownBlocks mapset.Set                // Set of block hashes known to be known by this peer
 	queuedTxs   chan []*types.Transaction // Queue of transactions to broadcast to the peer
-	queuedProps chan *types.Block         // Queue of blocks to broadcast to the peer
-	queuedAnns  chan []common.Hash        // Queue of blocks to announce to the peer
+	queuedProps chan *propEvent           // Queue of blocks to broadcast to the peer
+	queuedAnns  chan *types.Block         // Queue of blocks to announce to the peer
 	term        chan struct{}             // Termination channel to stop the broadcaster
 }
 
@@ -75,8 +87,8 @@ func NewPeer(conn p2p.Conn) *peer {
 		knownTxs:    mapset.NewSet(),
 		knownBlocks: mapset.NewSet(),
 		queuedTxs:   make(chan []*types.Transaction, maxQueuedTxs),
-		queuedProps: make(chan *types.Block, maxQueuedProps),
-		queuedAnns:  make(chan []common.Hash, maxQueuedAnns),
+		queuedProps: make(chan *propEvent, maxQueuedProps),
+		queuedAnns:  make(chan *types.Block, maxQueuedAnns),
 		term:        make(chan struct{}),
 	}
 }
@@ -93,18 +105,19 @@ func (p *peer) broadcast() {
 				}).Error("failed to broadcast txs")
 				return
 			}
-		case blockhashes := <-p.queuedAnns:
-			if err := p.SendNewBlockHashes(blockhashes); err != nil {
+		case block := <-p.queuedAnns:
+			if err := p.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()}); err != nil {
 				logrus.WithFields(logrus.Fields{
-					"hash_count": len(blockhashes),
-					"error":      err,
+					"hash":   block.Hash(),
+					"number": block.NumberU64(),
+					"error":  err,
 				}).Error("failed to broadcast block hashes")
 				return
 			}
-		case block := <-p.queuedProps:
-			if err := p.SendNewBlock(block); err != nil {
+		case prop := <-p.queuedProps:
+			if err := p.SendNewBlock(prop.block); err != nil {
 				logrus.WithFields(logrus.Fields{
-					"block_num": block.NumberU64(),
+					"block_num": prop.block.NumberU64(),
 					"error":     err,
 				}).Error("failed to broadcast new block")
 				return
@@ -146,33 +159,31 @@ func (p *peer) MarkTransactions(hash common.Hash) {
 }
 
 func (p *peer) SendTransactions(txs []*types.Transaction) error {
-	data := [][]byte{}
 	for _, tx := range txs {
 		p.knownTxs.Add(tx.Hash())
-
-		txbytes, err := json.Marshal(tx)
-		if err != nil {
-			log.Error("failed to marshal transaction to bytes,error: %v", err)
-			continue
-		}
-		data = append(data, txbytes)
 	}
-	return p.conn.SendChainMsg(int32(Message_TRANSACTIONS), data)
+
+	txbytes, err := json.Marshal(txs)
+	if err != nil {
+		log.Error("failed to marshal transaction to bytes,error: %v", err)
+		return err
+	}
+	return p.conn.SendChainMsg(int32(Message_TRANSACTIONS), txbytes)
 }
 
-func (p *peer) SendNewBlockHashes(hashes []common.Hash) error {
-	data := [][]byte{}
-	for _, hash := range hashes {
+func (p *peer) SendNewBlockHashes(hashes []common.Hash, num []uint64) error {
+	request := make(newBlockHashesData, len(hashes))
+	for i, hash := range hashes {
 		p.knownBlocks.Add(hash)
-
-		hbytes, err := json.Marshal(hash)
-		if err != nil {
-			log.Error("failed to marshal hash to bytes,error: %v", err)
-			continue
-		}
-		data = append(data, hbytes)
+		request[i].Hash = hash
+		request[i].Number = num[i]
 	}
-	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK_HASHS), data)
+	hbytes, err := json.Marshal(request)
+	if err != nil {
+		log.Error("failed to marshal hash to bytes,error: %v", err)
+		return err
+	}
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK_HASHS), hbytes)
 }
 
 func (p *peer) SendNewBlock(block *types.Block) error {
@@ -180,31 +191,34 @@ func (p *peer) SendNewBlock(block *types.Block) error {
 	log.Info("@@@@@@@@@SendNewBlock,blocknum:", block.NumberU64(), "hash", block.Hash())
 	fmt.Println("@@@@@@@@@SendNewBlock %v", block)
 
-	data := [][]byte{}
-	bbytes, err := json.Marshal(block)
+	blocks := []*types.Block{block}
+	bbytes, err := json.Marshal(blocks)
 	if err != nil {
 		log.Error("failed to marshal block to bytes,error: %v", err)
-	} else {
-		data = append(data, bbytes)
+		return err
 	}
-	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), data)
+	return p.conn.SendChainMsg(int32(Message_NEW_BLOCK), bbytes)
 }
 
 func (p *peer) AsyncSendNewBlock(block *types.Block) {
+	prop := &propEvent{
+		block: block,
+		td:    block.Td,
+	}
 	select {
-	case p.queuedProps <- block:
+	case p.queuedProps <- prop:
 		p.knownBlocks.Add(block.Hash())
 	default:
 		log.Debug("Dropping block propagation", "number", block.NumberU64(), "hash", block.Hash())
 	}
 }
 
-func (p *peer) AsyncSendNewBlockHash(hash common.Hash) {
+func (p *peer) AsyncSendNewBlockHash(block *types.Block) {
 	select {
-	case p.queuedAnns <- []common.Hash{hash}:
-		p.knownBlocks.Add(hash)
+	case p.queuedAnns <- block:
+		p.knownBlocks.Add(block.Hash())
 	default:
-		log.Debug("Dropping block announcement", "hash", hash.String())
+		log.Debug("Dropping block announcement", "hash", block.Hash().String())
 	}
 }
 
@@ -217,6 +231,13 @@ func (p *peer) AsyncSendTransactions(txs []*types.Transaction) {
 	default:
 		log.Debug("Dropping transaction propagation", "count", len(txs))
 	}
+}
+
+func (p *peer) requestHeader(origin []common.Hash) error {
+	if len(origin) <= 0 {
+		return errors.New("nil hash for request")
+	}
+	return p.requestHeadersByHash(origin[0], 1, 0, false)
 }
 
 // requestHeadersByHash fetches a batch of blocks' headers corresponding to the
