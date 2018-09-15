@@ -6,7 +6,6 @@ import (
 
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
-	"github.com/invin/kkchain/event"
 	"github.com/jbenet/goprocess"
 )
 
@@ -30,7 +29,6 @@ type Syncer struct {
 	blockchain *core.BlockChain
 	downloader *Downloader
 	fetcher    *Fetcher
-	scope      event.SubscriptionScope
 }
 
 // NewSyncer creates a new syncer object
@@ -133,7 +131,6 @@ func (s *Syncer) Stop() {
 	}
 
 	// FIXME:
-	s.scope.Close()
 	atomic.StoreInt32(&s.status, Stopped)
 }
 
@@ -166,14 +163,4 @@ func (s *Syncer) DeliverHeaders(id string, headers []*types.Header) (err error) 
 func (s *Syncer) DeliverBlocks(id string, blocks []*types.Block) (err error) {
 	// TODO: filter from fetchers
 	return s.downloader.DeliverBlocks(id, blocks)
-}
-
-// SubscribeSyncStartEvent subscribes start event for synchronization
-func (s *Syncer) SubscribeSyncStartEvent(ch chan<- StartEvent) event.Subscription {
-	return s.scope.Track(s.downloader.startFeed.Subscribe(ch))
-}
-
-// SubscribeSyncDoneEvent subscribes done event for synchronization
-func (s *Syncer) SubscribeSyncDoneEvent(ch chan<- DoneEvent) event.Subscription {
-	return s.scope.Track(s.downloader.doneFeed.Subscribe(ch))
 }

@@ -33,3 +33,9 @@ type ChainSideEvent struct {
 
 // ChainHeadEvent represents the head events 
 type ChainHeadEvent struct{ Block *types.Block }
+
+// StartEvent is triggered when downloading is started
+type StartEvent struct{}
+
+// DoneEvent is triggered when downloading is done
+type DoneEvent struct{ Err error }

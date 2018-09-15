@@ -78,7 +78,6 @@ type BlockChain struct {
 	tdCache     *lru.Cache // Cache for the most recent block total difficulties
 	numberCache *lru.Cache // Cache for the most recent block numbers
 
-	//for test TODO：move to sync mgr
 	syncStartFeed event.Feed
 	syncDoneFeed  event.Feed
 
@@ -650,20 +649,19 @@ func (bc *BlockChain) GetReceiptByHash(hash common.Hash) *types.Receipt {
 	return nil
 }
 
-//for test
-func (bc *BlockChain) SubscribeSyncStartEvent(ch chan<- struct{}) event.Subscription {
+func (bc *BlockChain) SubscribeSyncStartEvent(ch chan<- StartEvent) event.Subscription {
 	return bc.scope.Track(bc.syncStartFeed.Subscribe(ch))
 }
 
-func (bc *BlockChain) PostSyncStartEvent(event struct{}) {
+func (bc *BlockChain) PostSyncStartEvent(event StartEvent) {
 	bc.syncStartFeed.Send(event)
 }
 
-func (bc *BlockChain) SubscribeSyncDoneEvent(ch chan<- struct{}) event.Subscription {
+func (bc *BlockChain) SubscribeSyncDoneEvent(ch chan<- DoneEvent) event.Subscription {
 	return bc.scope.Track(bc.syncDoneFeed.Subscribe(ch))
 }
 
-func (bc *BlockChain) PostSyncDoneEvent(event struct{}) {
+func (bc *BlockChain) PostSyncDoneEvent(event DoneEvent) {
 	bc.syncDoneFeed.Send(event)
 }
 
@@ -935,6 +933,7 @@ func (bc *BlockChain) Processor() Processor {
 	defer bc.procmu.RUnlock()
 	return bc.processor
 }
+
 // GetAncestor retrieves the Nth ancestor of a given block. It assumes that either the given block or
 // a close ancestor of it is canonical. maxNonCanonical points to a downwards counter limiting the
 // number of blocks to be individually checked before we reach the canonical chain.

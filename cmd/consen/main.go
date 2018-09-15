@@ -21,7 +21,6 @@ import (
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
 	log "github.com/sirupsen/logrus"
-	
 )
 
 // var log = logging.MustGetLogger("cmd/consensus")
@@ -162,9 +161,7 @@ func doMiner(chain *core.BlockChain, engine consensus.Engine) {
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
 
-	time.Sleep(time.Duration(2 * time.Second))
-	chain.PostSyncDoneEvent(struct{}{})
-	//time.Sleep(time.Duration(1 * time.Second))
+	//time.Sleep(time.Duration(2 * time.Second))
 	//chain.PostSyncDoneEvent(struct{}{})
 
 	wait := make(chan interface{})

@@ -9,7 +9,6 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
 	logger "github.com/sirupsen/logrus"
-	
 )
 
 type Miner struct {
@@ -23,18 +22,18 @@ type Miner struct {
 	isLocalMining int32
 
 	// sync start event
-	syncStartCh  chan struct{}
+	syncStartCh  chan core.StartEvent
 	syncStartSub event.Subscription
 	// sync over event
-	syncDoneCh  chan struct{}
+	syncDoneCh  chan core.DoneEvent
 	syncDoneSub event.Subscription
 }
 
 func New(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *Miner {
 	miner := &Miner{
 		quitCh:      make(chan struct{}),
-		syncStartCh: make(chan struct{}),
-		syncDoneCh:  make(chan struct{}),
+		syncStartCh: make(chan core.StartEvent),
+		syncDoneCh:  make(chan core.DoneEvent),
 		worker:      newWorker(bc, txpool, engine),
 		chain:       bc,
 	}
@@ -44,8 +43,7 @@ func New(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *Min
 }
 
 func (m *Miner) onEvent() {
-	// Subscribe events from syncmgr, now implement in blockchain for test
-	//TODO: syncmgr must support subscribe interface
+	// Subscribe events
 	m.syncStartSub = m.chain.SubscribeSyncStartEvent(m.syncStartCh)
 	defer m.syncStartSub.Unsubscribe()
 
