@@ -1,4 +1,5 @@
 package chain
+//go:generate moq -out peer_moq_test.go . Peer
 
 import (
 	"errors"
@@ -62,6 +63,13 @@ type propEvent struct {
 type newBlockHashesData []struct {
 	Hash   common.Hash // Hash of one particular block being announced
 	Number uint64      // Number of one particular block being announced
+}
+
+// Peer defines interface for requesting blocks and headers from remote peer
+type Peer interface {
+	requestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool)
+	requestHeadersByNumber(origin uint64, amount int, skip int, reverse bool) error
+	requestBlocksByNumber(origin uint64, amount int) error 
 }
 
 type peer struct {

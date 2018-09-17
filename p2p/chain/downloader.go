@@ -493,6 +493,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 	defer log.Debug("Block download terminated")
 
 	request := time.Now()
+	
 	timeout := time.NewTimer(0) // timer to dump a non-responsive active peer
 	<-timeout.C                 // timeout channel should be initially empty
 	defer timeout.Stop()
@@ -503,7 +504,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 		ttl = d.requestTTL()
 		timeout.Reset(ttl)
 
-		log.Debug("Fetching full blocks", "count", MaxBlockFetch, "from", from)
+		log.Debug("Fetching full blocks", "count", MaxBlockFetch, "from", from, "requestTime", request)
 		go p.requestBlocksByNumber(uint64(from), int(MaxBlockFetch))
 	}
 
