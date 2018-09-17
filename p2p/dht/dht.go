@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"time"
 
@@ -131,7 +130,7 @@ func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 		return
 	}
 
-	fmt.Printf("dht handle %d success and send resp to: %s, conn: %v", msg.Type, pid, c)
+	log.Infof("dht handle %d success and send resp to: %s, conn: %v", msg.Type, pid, c)
 }
 
 func (dht *DHT) Start() {
@@ -140,13 +139,13 @@ func (dht *DHT) Start() {
 	//load table from db
 	dht.loadTableFromDB()
 
-	fmt.Println("start sync loop.....")
+	log.Info("start sync loop.....")
 	go dht.syncLoop()
 	go dht.checkPingPong()
 }
 
 func (dht *DHT) Stop() {
-	fmt.Println("stopping sync loop.....")
+	log.Info("stopping sync loop.....")
 	dht.quitCh <- true
 
 }
@@ -168,7 +167,7 @@ func (dht *DHT) syncLoop() {
 	for {
 		select {
 		case <-dht.quitCh:
-			fmt.Println("stopped sync loop")
+			log.Info("stopped sync loop")
 			dht.store.Close()
 			return
 		case <-syncLoopTicker.C:
@@ -199,7 +198,7 @@ func (dht *DHT) RemovePeer(peer PeerID) {
 
 //FindTargetNeighbours searches target's neighbours from given PeerID
 func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
-	fmt.Printf("FindTargetNeighbours from %s, target: %s\n", peer, hex.EncodeToString(target))
+	log.Infof("FindTargetNeighbours from %s, target: %s\n", peer, hex.EncodeToString(target))
 	if peer.Equals(dht.self) {
 		return
 	}
@@ -209,7 +208,7 @@ func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
 	if err != nil {
 		conn, err = dht.host.Connect(peer.ID.Address)
 		if err != nil {
-			fmt.Println(err)
+			log.Error(err)
 		}
 
 		// FIXME: delay FIND_NODE to next round
@@ -220,7 +219,7 @@ func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
 	//send find neighbours request to peer
 	pmes := NewMessage(Message_FIND_NODE, hex.EncodeToString(target))
 	if err = conn.WriteMessage(pmes, protocolDHT); err != nil {
-		fmt.Print(err)
+		log.Error(err)
 	}
 }
 
@@ -236,7 +235,7 @@ func RandomTargetID() []byte {
 
 // SyncRouteTable sync route table.
 func (dht *DHT) SyncRouteTable() {
-	fmt.Println("timer trigger")
+	log.Info("timer trigger")
 	dht.table.printTable()
 
 	target := RandomTargetID()
@@ -246,7 +245,7 @@ func (dht *DHT) SyncRouteTable() {
 	for _, addr := range dht.network.Bootstraps() {
 		pid, err := ParsePeerAddr(addr)
 		if err != nil {
-			log.Info("connect with error ", err)
+			log.Error("connect with error ", err)
 			continue
 		}
 
@@ -312,7 +311,7 @@ func (dht *DHT) loadTableFromDB() {
 
 // Connected is called when new connection is established
 func (dht *DHT) Connected(c p2p.Conn) {
-	fmt.Printf("在dht中获取通知：connected, %s\n", c.RemotePeer())
+	log.Infof("在dht中获取通知：connected, %s\n", c.RemotePeer())
 	if c.RemotePeer().Address == "" || c.RemotePeer().PublicKey == nil {
 		return
 	}
@@ -323,7 +322,7 @@ func (dht *DHT) Connected(c p2p.Conn) {
 
 // Disconnected is called when the connection is closed
 func (dht *DHT) Disconnected(c p2p.Conn) {
-	fmt.Println("disconnect")
+	log.Info("disconnect")
 }
 
 func (dht *DHT) ping(p PeerID) {
@@ -343,7 +342,7 @@ func (dht *DHT) ping(p PeerID) {
 			dht.pingpong.DeleteStopCh(peer)
 			return
 		case <-pingTicker.C:
-			fmt.Printf("sending ping to %s\n", p.Address)
+			log.Infof("sending ping to %s\n", p.Address)
 			pmes := NewMessage(Message_PING, "")
 
 			conn, err := dht.sendMessage(p, pmes)

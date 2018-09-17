@@ -328,10 +328,10 @@ func (d *dataset) generate(dir string, limit int, test bool) {
 		var err error
 		d.dump, d.mmap, d.dataset, err = memoryMap(path)
 		if err == nil {
-			logger.Debug("Loaded old ethash dataset from disk")
+			logger.Info("Loaded old ethash dataset from disk")
 			return
 		}
-		logger.Debug("Failed to load old ethash dataset", "err", err)
+		logger.Info("Failed to load old ethash dataset", "err", err)
 
 		// No previous dataset available, create a new dataset file to fill
 		cache := make([]uint32, csize/4)

@@ -12,7 +12,6 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
-	"github.com/invin/kkchain/event"
 )
 
 var (
@@ -101,9 +100,6 @@ type Downloader struct {
 	chain      *Chain
 	blockchain *core.BlockChain
 	mode       SyncMode // Synchronization mode defining the strategy used (per sync cycle)
-
-	startFeed event.Feed // Event feeder to announce sync start event
-	doneFeed  event.Feed // Event feeder to announce sync stop event
 
 	pending  []*types.Block // Blocks waiting for inserting to blockchain
 	headerCh chan dataPack  // Channel receiving inbound block headers
@@ -208,11 +204,13 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 // specified peer and head hash.
 func (d *Downloader) syncWithPeer(p *peer, hash common.Hash, td *big.Int) (err error) {
 	// TODO: tomorrow
-	d.startFeed.Send(StartEvent{})
+	//d.startFeed.Send(StartEvent{})
+	d.blockchain.PostSyncStartEvent(core.StartEvent{})
 
 	defer func() {
 		// reset on error
-		d.doneFeed.Send(DoneEvent{err})
+		//d.doneFeed.Send(DoneEvent{err})
+		d.blockchain.PostSyncDoneEvent(core.DoneEvent{err})
 	}()
 
 	log.Debug("Synchronising with the network", "peer", p.ID, "head", hash, "td", td, "mode", d.mode)

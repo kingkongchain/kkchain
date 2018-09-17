@@ -21,7 +21,6 @@ import (
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
 	log "github.com/sirupsen/logrus"
-	
 )
 
 // var log = logging.MustGetLogger("cmd/consensus")
@@ -67,18 +66,7 @@ func main() {
 		ticker := time.NewTicker(8 * time.Second)
 		for _ = range ticker.C {
 			block := chain.CurrentBlock()
-			log.Info("!!!!!blockchain info: CurrentBlock:====>")
-			fmt.Printf(`
-				number: %d 
-				{
-					hash: %s
-					parent: %s
-					state: %s
-					diff: 0x%x
-					gaslimit: %d
-					gasused: %d
-					nonce: 0x%x
-				}`+"\n", block.Number(), block.Hash().String(), block.ParentHash().String(), block.StateRoot().String(), block.Difficulty(), block.GasLimit(), block.GasUsed(), block.Nonce())
+			log.Infof("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
 		}
 	}()
 
@@ -162,9 +150,7 @@ func doMiner(chain *core.BlockChain, engine consensus.Engine) {
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
 
-	time.Sleep(time.Duration(2 * time.Second))
-	chain.PostSyncDoneEvent(struct{}{})
-	//time.Sleep(time.Duration(1 * time.Second))
+	//time.Sleep(time.Duration(2 * time.Second))
 	//chain.PostSyncDoneEvent(struct{}{})
 
 	wait := make(chan interface{})
