@@ -2,9 +2,10 @@ package dht
 
 import (
 	"container/list"
-	"fmt"
 	"sort"
 	"sync"
+
+	log "github.com/sirupsen/logrus"
 )
 
 // BucketSize defines the NodeID, Key, and routing table data structures.
@@ -228,13 +229,13 @@ func (t *RoutingTable) Bucket(id int) *Bucket {
 }
 
 func (t *RoutingTable) printTable() {
-	fmt.Printf("self = %s\n", t.self)
+	log.Infof("self = %s\n", t.self)
 	for idx, bucket := range t.buckets {
 		bucket.mutex.RLock()
 
 		for e := bucket.Front(); e != nil; e = e.Next() {
 			id := e.Value.(PeerID)
-			fmt.Printf("distance: %d, %s\n", idx, id)
+			log.Infof("distance: %d, %s\n", idx, id)
 		}
 
 		bucket.mutex.RUnlock()

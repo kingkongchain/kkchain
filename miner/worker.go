@@ -199,11 +199,13 @@ func (w *worker) waitResult() {
 func (w *worker) commitTask() {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	log.Debug("commitTask...")
+
 	if !w.isRunning() {
 		return
 	}
-
+	if w.currentCtx != nil {
+		log.Infof("current ctx... %d, ctx's parent: %s", w.currentCtx.header.Number, w.currentCtx.header.ParentHash.String())
+	}
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()
 

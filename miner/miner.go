@@ -36,6 +36,7 @@ func New(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *Min
 		syncDoneCh:  make(chan core.DoneEvent),
 		worker:      newWorker(bc, txpool, engine),
 		chain:       bc,
+		syncDone:    1,
 	}
 
 	go miner.onEvent()
@@ -53,26 +54,24 @@ func (m *Miner) onEvent() {
 	for {
 		select {
 		case <-m.syncStartCh:
-			logger.Debug("sync start....")
+			logger.Info("sync start....")
+			atomic.StoreInt32(&m.syncDone, 0)
 			if m.Mining() {
-				localMining := atomic.LoadInt32(&m.isLocalMining) == 1
 				m.Stop()
-				//if started before，set isLocalMing to 1
-				if localMining {
-					atomic.StoreInt32(&m.isLocalMining, 1)
-				}
+				atomic.StoreInt32(&m.isLocalMining, 1)
 			}
 		case <-m.syncDoneCh:
-			logger.Debug("sync done....")
+			logger.Info("sync done....")
 			atomic.StoreInt32(&m.syncDone, 1)
-			m.syncDoneSub.Unsubscribe()
 			if atomic.LoadInt32(&m.isLocalMining) == 1 {
 				m.Start()
 			}
 			//
-		case <-m.syncStartSub.Err():
+		case err := <-m.syncStartSub.Err():
+			logger.Error(err)
 			return
-		case <-m.syncDoneSub.Err():
+		case err := <-m.syncDoneSub.Err():
+			logger.Error(err)
 			return
 		case <-m.quitCh:
 			return

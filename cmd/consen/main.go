@@ -66,18 +66,7 @@ func main() {
 		ticker := time.NewTicker(8 * time.Second)
 		for _ = range ticker.C {
 			block := chain.CurrentBlock()
-			log.Info("!!!!!blockchain info: CurrentBlock:====>")
-			fmt.Printf(`
-				number: %d 
-				{
-					hash: %s
-					parent: %s
-					state: %s
-					diff: 0x%x
-					gaslimit: %d
-					gasused: %d
-					nonce: 0x%x
-				}`+"\n", block.Number(), block.Hash().String(), block.ParentHash().String(), block.StateRoot().String(), block.Difficulty(), block.GasLimit(), block.GasUsed(), block.Nonce())
+			log.Infof("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
 		}
 	}()
 

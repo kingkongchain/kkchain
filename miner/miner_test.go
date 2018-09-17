@@ -1,16 +1,17 @@
 package miner
 
 import (
-	"os"
-	"os/user"
-	"path/filepath"
-	"testing"
-	"time"
-
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus/pow"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/params"
+	"os"
+	"os/user"
+	"path/filepath"
+	"testing"
+
+	logger "github.com/sirupsen/logrus"
+	"time"
 )
 
 func TestMiner_Start(t *testing.T) {
@@ -65,10 +66,14 @@ func TestMine(t *testing.T) {
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
 
-	time.Sleep(time.Duration(2 * time.Second))
-	chain.PostSyncDoneEvent(struct{}{})
-	//time.Sleep(time.Duration(1 * time.Second))
-	//chain.PostSyncDoneEvent(struct{}{})
+	time.Sleep(time.Duration(8 * time.Second))
+
+	logger.Info("PostSyncStartEvent")
+	chain.PostSyncStartEvent(core.StartEvent{})
+
+	time.Sleep(time.Duration(10 * time.Second))
+	logger.Info("PostSyncDoneEvent")
+	chain.PostSyncDoneEvent(core.DoneEvent{})
 
 	wait := make(chan interface{})
 	select {
