@@ -322,8 +322,7 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 				t.block.Td = genesisDifficulty.Add(t.block.Header().Difficulty, genesisDifficulty)
 			}
 		} else {
-			prevTD := currentBlock.Td
-			t.block.Td = t.block.Header().Difficulty.Add(t.block.Header().Difficulty, prevTD)
+			t.block.Td = new(big.Int).Add(t.block.Header().Difficulty, currentBlock.Td)
 		}
 		res = t
 	} else {

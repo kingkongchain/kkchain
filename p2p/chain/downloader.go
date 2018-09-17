@@ -130,6 +130,9 @@ func NewDownloader(chain *Chain) *Downloader {
 	return &Downloader{
 		chain:      chain,
 		blockchain: chain.blockchain,
+		headerCh:   make(chan dataPack, 1),
+		blockCh:    make(chan dataPack, 1),
+		quitCh:     make(chan struct{}),
 	}
 }
 

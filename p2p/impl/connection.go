@@ -247,9 +247,9 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 // only use for chain request
 func (c *Connection) SendChainMsg(msgType int32, msgData interface{}) error {
 	switch msgData.(type) {
-	case [][]byte:
+	case []byte:
 		newMsg := &chain.DataMsg{
-			Data: msgData.([][]byte),
+			Data: msgData.([]byte),
 		}
 		msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
 		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")

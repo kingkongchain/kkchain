@@ -46,6 +46,10 @@ type Chain struct {
 	syncer *Syncer
 }
 
+func init() {
+	log.SetLevel(logrus.DebugLevel)
+}
+
 // New creates a new Chain object
 func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	c := &Chain{
@@ -261,8 +265,7 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 	// Otherwise if the block is indeed in out own chain, announce it
 	if c.blockchain.HasBlock(hash, block.NumberU64()) {
 		for _, peer := range peers {
-			hash := []common.Hash{block.Hash()}
-			peer.SendNewBlockHashes(hash)
+			peer.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()})
 		}
 		log.Info("*****Send block Suceess.Announced block", "hash", hash, "recipients", len(peers))
 	}
