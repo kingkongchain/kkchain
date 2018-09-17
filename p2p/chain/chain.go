@@ -46,6 +46,10 @@ type Chain struct {
 	syncer *Syncer
 }
 
+func init() {
+	log.SetLevel(logrus.DebugLevel)
+}
+
 // New creates a new Chain object
 func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	c := &Chain{
