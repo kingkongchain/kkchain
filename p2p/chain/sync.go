@@ -48,7 +48,7 @@ func NewSyncer(chain *Chain) *Syncer {
 		status:     Stopped,
 		chain:      chain,
 		blockchain: chain.blockchain,
-		downloader: NewDownloader(chain),
+		downloader: NewDownloader(chain.blockchain, NewDPeerSet(chain.peers)),
 		fetcher:    NewFetcher(bc.GetBlockByHash, validator, chain.BroadcastBlock, heighter, inserter, chain.removePeer),
 	}
 }

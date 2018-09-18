@@ -27,6 +27,8 @@ var (
 	rttMinConfidence = 0.1              // Worse confidence factor in our estimated RTT value
 	ttlScaling       = 3                // Constant scaling factor for RTT -> TTL conversion
 	ttlLimit         = time.Minute      // Maximum TTL allowance to prevent reaching crazy timeouts
+
+	fsMinFullBlocks        = 64              // Number of blocks to retrieve fully even in fast sync
 )
 
 var (
@@ -95,10 +97,64 @@ func (b *blockPack) PeerID() string { return b.peerID }
 func (b *blockPack) Items() int     { return len(b.blocks) }
 func (b *blockPack) Stats() string  { return fmt.Sprintf("%d", len(b.blocks)) }
 
+
+// LightChain encapsulates functions required to synchronise a light chain.
+type LightChain interface {
+	// HasHeader verifies a header's presence in the local chain.
+	// HasHeader(common.Hash, uint64) bool
+
+	// GetHeaderByHash retrieves a header from the local chain.
+	GetHeaderByHash(common.Hash) *types.Header
+
+	// CurrentHeader retrieves the head header from the local chain.
+	CurrentHeader() *types.Header
+
+	// GetTd returns the total difficulty of a local block.
+	GetTd(common.Hash, uint64) *big.Int
+
+	// InsertHeaderChain inserts a batch of headers into the local chain.
+	// InsertHeaderChain([]*types.Header, int) (int, error)
+
+	// Rollback removes a few recently added elements from the local chain.
+	// Rollback([]common.Hash)
+}
+
+// BlockChain encapsulates functions required to sync a (full or fast) blockchain.
+type BlockChain interface {
+	LightChain
+
+	// HasBlock verifies a block's presence in the local chain.
+	HasBlock(common.Hash, uint64) bool
+
+	// GetBlockByHash retrieves a block from the local chain.
+	GetBlockByHash(common.Hash) *types.Block
+
+	// CurrentBlock retrieves the head block from the local chain.
+	CurrentBlock() *types.Block
+
+	// CurrentFastBlock retrieves the head fast block from the local chain.
+	// CurrentFastBlock() *types.Block
+
+	// FastSyncCommitHead directly commits the head block to a certain entity.
+	// FastSyncCommitHead(common.Hash) error
+
+	// InsertChain inserts a batch of blocks into the local chain.
+	InsertChain(types.Blocks) (int, error)
+
+	// InsertReceiptChain inserts a batch of receipts into the local chain.
+	// InsertReceiptChain(types.Blocks, []types.Receipts) (int, error)
+
+	// PostSyncStartEvent posts start event at beginning 
+	PostSyncStartEvent(event core.StartEvent)
+
+	// PostSyncDoneEvent posts stop event after finished
+	PostSyncDoneEvent(event core.DoneEvent)	
+}
+
 // Downloader is the package for downloading blocks from remote peers
 type Downloader struct {
-	chain      *Chain
-	blockchain *core.BlockChain
+	blockchain 	BlockChain
+	dps			DPeerSetIntf
 	mode       SyncMode // Synchronization mode defining the strategy used (per sync cycle)
 
 	pending  []*types.Block // Blocks waiting for inserting to blockchain
@@ -122,10 +178,10 @@ type Downloader struct {
 }
 
 // NewDownloader creates a downloader object
-func NewDownloader(chain *Chain) *Downloader {
+func NewDownloader(blockchain BlockChain, dps DPeerSetIntf) *Downloader {
 	return &Downloader{
-		chain:      chain,
-		blockchain: chain.blockchain,
+		blockchain: blockchain,
+		dps: dps,
 		headerCh:   make(chan dataPack, 1),
 		blockCh:    make(chan dataPack, 1),
 		quitCh:     make(chan struct{}),
@@ -192,7 +248,7 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 	d.mode = mode
 
 	// Retrieve the origin peer and initiate the downloading process
-	p := d.chain.peers.Peer(id) //TODO:
+	p := d.dps.Peer(id)
 	if p == nil {
 		return errUnknownPeer
 	}
@@ -202,7 +258,7 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 
 // syncWithPeer starts a block synchronization based on the hash chain from the
 // specified peer and head hash.
-func (d *Downloader) syncWithPeer(p *peer, hash common.Hash, td *big.Int) (err error) {
+func (d *Downloader) syncWithPeer(p Peer, hash common.Hash, td *big.Int) (err error) {
 	// TODO: tomorrow
 	//d.startFeed.Send(StartEvent{})
 	d.blockchain.PostSyncStartEvent(core.StartEvent{})
@@ -213,7 +269,7 @@ func (d *Downloader) syncWithPeer(p *peer, hash common.Hash, td *big.Int) (err e
 		d.blockchain.PostSyncDoneEvent(core.DoneEvent{err})
 	}()
 
-	log.Debug("Synchronising with the network", "peer", p.ID, "head", hash, "td", td, "mode", d.mode)
+	log.Debug("Synchronising with the network", "peer", p.ID(), "head", hash, "td", td, "mode", d.mode)
 	defer func(start time.Time) {
 		log.Debug("Synchronisation terminated", "elapsed", time.Since(start))
 	}(time.Now())
@@ -288,12 +344,12 @@ func (d *Downloader) Terminate() {
 
 // fetchHeight retrieves the head header of the remote peer to aid in estimating
 // the total time a pending synchronisation would take.
-func (d *Downloader) fetchHeight(p *peer) (*types.Header, error) {
+func (d *Downloader) fetchHeight(p Peer) (*types.Header, error) {
 	log.Debug("Retrieving remote chain height")
 
 	// Request the advertised remote head block and wait for the response
 	head, _ := p.Head()
-	go p.requestHeadersByHash(head, 1, 0, false)
+	go p.RequestHeadersByHash(head, 1, 0, false)
 
 	ttl := d.requestTTL()
 	timeout := time.After(ttl)
@@ -304,7 +360,7 @@ func (d *Downloader) fetchHeight(p *peer) (*types.Header, error) {
 
 		case packet := <-d.headerCh:
 			// Discard anything not from the origin peer
-			if packet.PeerID() != p.ID {
+			if packet.PeerID() != p.ID() {
 				log.Debug("Received headers from incorrect peer", "peer", packet.PeerID())
 				break
 			}
@@ -333,7 +389,7 @@ func (d *Downloader) fetchHeight(p *peer) (*types.Header, error) {
 // on the correct chain, checking the top N links should already get us a match.
 // In the rare scenario when we ended up on a long reorganisation (i.e. none of
 // the head links match), we do a binary search to find the common ancestor.
-func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
+func (d *Downloader) findAncestor(p Peer, height uint64) (uint64, error) {
 	// Figure out the valid ancestor range to prevent rewrite attacks
 	floor, ceil := int64(-1), d.blockchain.CurrentBlock().NumberU64()
 
@@ -354,7 +410,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 	if count > limit {
 		count = limit
 	}
-	go p.requestHeadersByNumber(uint64(from), int(count), 15, false)
+	go p.RequestHeadersByNumber(uint64(from), int(count), 15, false)
 
 	// Wait for the remote response to the head fetch
 	number, hash := uint64(0), common.Hash{}
@@ -369,7 +425,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 
 		case packet := <-d.headerCh:
 			// Discard anything not from the origin peer
-			if packet.PeerID() != p.ID {
+			if packet.PeerID() != p.ID() {
 				log.Debug("Received headers from incorrect peer", "peer", packet.PeerID())
 				break
 			}
@@ -435,7 +491,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 		ttl := d.requestTTL()
 		timeout := time.After(ttl)
 
-		go p.requestHeadersByNumber(check, 1, 0, false)
+		go p.RequestHeadersByNumber(check, 1, 0, false)
 
 		// Wait until a reply arrives to this request
 		for arrived := false; !arrived; {
@@ -445,7 +501,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 
 			case packer := <-d.headerCh:
 				// Discard anything not from the origin peer
-				if packer.PeerID() != p.ID {
+				if packer.PeerID() != p.ID() {
 					log.Debug("Received headers from incorrect peer", "peer", packer.PeerID())
 					break
 				}
@@ -488,7 +544,7 @@ func (d *Downloader) findAncestor(p *peer, height uint64) (uint64, error) {
 }
 
 // fetchBlocks retrieves the blocks from remote peer
-func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
+func (d *Downloader) fetchBlocks(p Peer, from uint64) error {
 	log.Debug("Directing block downloads", "origin", from)
 	defer log.Debug("Block download terminated")
 
@@ -505,7 +561,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 		timeout.Reset(ttl)
 
 		log.Debug("Fetching full blocks", "count", MaxBlockFetch, "from", from, "requestTime", request)
-		go p.requestBlocksByNumber(uint64(from), int(MaxBlockFetch))
+		go p.RequestBlocksByNumber(uint64(from), int(MaxBlockFetch))
 	}
 
 	// Start pulling the blocks until all is done
@@ -518,7 +574,7 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 
 		case packet := <-d.blockCh:
 			// Make sure the active peer is giving us the skeleton headers
-			if packet.PeerID() != p.ID {
+			if packet.PeerID() != p.ID() {
 				log.Debug("Received block from incorrect peer", "peer", packet.PeerID())
 				break
 			}
@@ -550,12 +606,12 @@ func (d *Downloader) fetchBlocks(p *peer, from uint64) error {
 			if d.dropPeer == nil {
 				// The dropPeer method is nil when `--copydb` is used for a local copy.
 				// Timeouts can occur if e.g. compaction hits at the wrong time, and can be ignored
-				log.Warning("Downloader wants to drop peer, but peerdrop-function is not set", "peer", p.ID)
+				log.Warning("Downloader wants to drop peer, but peerdrop-function is not set", "peer", p.ID())
 				break
 			}
 			// Header retrieval timed out, consider the peer bad and drop
 			log.Debug("Header request timed out", "elapsed", ttl)
-			d.dropPeer(p.ID)
+			d.dropPeer(p.ID())
 
 			return errBadPeer
 		}

@@ -65,12 +65,7 @@ type newBlockHashesData []struct {
 	Number uint64      // Number of one particular block being announced
 }
 
-// Peer defines interface for requesting blocks and headers from remote peer
-type Peer interface {
-	requestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool)
-	requestHeadersByNumber(origin uint64, amount int, skip int, reverse bool) error
-	requestBlocksByNumber(origin uint64, amount int) error 
-}
+
 
 type peer struct {
 	ID          string
@@ -130,7 +125,10 @@ func (p *peer) broadcast() {
 				}).Error("failed to broadcast new block")
 				return
 			}
+		case <-p.term:
+			return
 		}
+	
 	}
 }
 
