@@ -315,17 +315,6 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 	if t.block, err = w.engine.Execute(w.chain, t.block, stop); t.block != nil {
 		//log.Info("Successfully sealed new block", "number", t.block.Number(), "hash", t.block.Hash(),
 		//	"elapsed", time.Since(t.createdAt))
-
-		// fill up TD to block
-		currentBlock := w.chain.CurrentBlock()
-		if currentBlock.NumberU64() == 0 {
-			genesisDifficulty := currentBlock.Difficulty()
-			if genesisDifficulty != nil {
-				t.block.Td = genesisDifficulty.Add(t.block.Header().Difficulty, genesisDifficulty)
-			}
-		} else {
-			t.block.Td = new(big.Int).Add(t.block.Header().Difficulty, currentBlock.Td)
-		}
 		res = t
 	} else {
 		if err != nil {

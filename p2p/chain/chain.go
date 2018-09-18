@@ -232,8 +232,16 @@ func (c *Chain) minedBroadcastLoop() {
 		select {
 		case newMinedBlockCh := <-c.newMinedBlockCh:
 			log.Info("*******receive newMinedBlockEvent:blockNum:", newMinedBlockCh.Block.NumberU64(), ",prepare execute BroadcastBlock")
-			c.BroadcastBlock(newMinedBlockCh.Block, true)  // First propagate block to peers
-			c.BroadcastBlock(newMinedBlockCh.Block, false) // Only then announce to the rest
+
+			// fill up td
+			block := newMinedBlockCh.Block
+			if block.Td == nil {
+				parentTD := c.blockchain.GetTd(block.ParentHash(), block.NumberU64()-1)
+				block.Td = new(big.Int).Add(parentTD, block.Difficulty())
+			}
+
+			c.BroadcastBlock(block, true)  // First propagate block to peers
+			c.BroadcastBlock(block, false) // Only then announce to the rest
 		}
 	}
 }

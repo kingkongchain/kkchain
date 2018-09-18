@@ -23,9 +23,7 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-const (
-	fakedelay time.Duration = 15 * time.Second
-)
+// var log = logging.MustGetLogger("cmd/consensus")
 
 // init config and loggingLoger
 func Init(path *string) {
@@ -43,9 +41,8 @@ func main() {
 	//sec := flag.Int("s", 120, "")
 	keypath := flag.String("k", "", "")
 	configpath := flag.String("c", "", "")
-	mineFlag := flag.String("m", "mineFlag", "true is mine")
+	mineFlag := flag.String("m", "", "")
 	fakeFlag := flag.String("f", "fakeMineFlag", "true is fake mine")
-	nodeName := flag.String("n", "nodeName", "this param will use for setting CacheDir and DatasetDir when application sets normal mining mode")
 	flag.Parse()
 	log.Info("configpath:", *configpath)
 	Init(configpath)
@@ -62,25 +59,14 @@ func main() {
 	}
 	log.Info("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
 
-	engine := newEngine(fakeFlag, *nodeName)
+	engine := newEngine(fakeFlag)
 	chain, _ := core.NewBlockChain(chainDb, engine)
 
 	go func() {
 		ticker := time.NewTicker(8 * time.Second)
 		for _ = range ticker.C {
 			block := chain.CurrentBlock()
-			log.Info("!!!!!blockchain info: CurrentBlock:====>")
-			fmt.Printf(`
-				number: %d 
-				{
-					hash: %s
-					parent: %s
-					state: %s
-					diff: 0x%x
-					gaslimit: %d
-					gasused: %d
-					nonce: 0x%x
-				}`+"\n", block.Number(), block.Hash().String(), block.ParentHash().String(), block.StateRoot().String(), block.Difficulty(), block.GasLimit(), block.GasUsed(), block.Nonce())
+			log.Infof("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
 		}
 	}()
 
@@ -124,23 +110,22 @@ func doP2P(bc *core.BlockChain, port, keypath string) {
 
 }
 
-func newEngine(fakeFlag *string, nodeName string) consensus.Engine {
+func newEngine(fakeFlag *string) consensus.Engine {
 	home := os.Getenv("HOME")
 	if home == "" {
 		if user, err := user.Current(); err == nil {
 			home = user.HomeDir
 		}
 	}
-
 	var engine *pow.Ethash
 	if *fakeFlag == "true" {
-		engine = pow.NewFakeDelayer(fakedelay)
+		engine = pow.NewFakeDelayer(15 * time.Second)
 	} else {
 		powconfig := pow.Config{
-			CacheDir:       "ethash/" + nodeName,
+			CacheDir:       "ethash",
 			CachesInMem:    2,
 			CachesOnDisk:   3,
-			DatasetDir:     filepath.Join(home, ".ethash/"+nodeName),
+			DatasetDir:     filepath.Join(home, ".ethash"),
 			DatasetsInMem:  1,
 			DatasetsOnDisk: 2,
 			PowMode:        pow.ModeNormal,
@@ -148,7 +133,6 @@ func newEngine(fakeFlag *string, nodeName string) consensus.Engine {
 		}
 		engine = pow.New(powconfig, nil)
 	}
-
 	return engine
 
 }
@@ -166,9 +150,7 @@ func doMiner(chain *core.BlockChain, engine consensus.Engine) {
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
 
-	time.Sleep(time.Duration(2 * time.Second))
-	chain.PostSyncDoneEvent(struct{}{})
-	//time.Sleep(time.Duration(1 * time.Second))
+	//time.Sleep(time.Duration(2 * time.Second))
 	//chain.PostSyncDoneEvent(struct{}{})
 
 	wait := make(chan interface{})
