@@ -67,7 +67,7 @@ func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	}
 
 	host.Register(c)
-	c.syncer = sync.New(c, bc) 
+	c.syncer = sync.New(c, bc)
 
 	return c
 }
@@ -174,8 +174,6 @@ func (c *Chain) Connected(conn p2p.Conn) {
 
 func (c *Chain) Disconnected(conn p2p.Conn) {
 	log.Infof("a disconn is notified,remote ID: %s", conn.RemotePeer())
-	c.peers.lock.Lock()
-	defer c.peers.lock.Unlock()
 	id := hex.EncodeToString(conn.RemotePeer().PublicKey)
 	c.peers.Unregister(id)
 }
@@ -300,6 +298,7 @@ func (c *Chain) AcceptTxs() {
 func (c *Chain) Peers() syncPeer.PeerSet {
 	return NewDPeerSet(c.peers)
 }
+
 // DPeerSet is a thin wrapper for original peerset, through which we can do testing easily
 type DPeerSet struct {
 	ps *PeerSet
@@ -312,13 +311,13 @@ func NewDPeerSet(ps *PeerSet) *DPeerSet {
 	}
 }
 
-// Register registers peer 
+// Register registers peer
 func (s *DPeerSet) Register(p syncPeer.Peer) error {
 	panic("not supported yet")
 	return nil
 }
 
-// UnRegister unregisters peer specified by id 
+// UnRegister unregisters peer specified by id
 func (s *DPeerSet) UnRegister(id string) error {
 	panic("not supported yet")
 	return nil
@@ -335,7 +334,7 @@ func (s *DPeerSet) BestPeer() syncPeer.Peer {
 	if p := s.ps.BestPeer(); p != nil {
 		return NewDPeer(p)
 	}
-	
+
 	log.Warning("found no best peer, possible no peers")
 	return nil
 }
