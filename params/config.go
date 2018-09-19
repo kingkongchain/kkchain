@@ -42,7 +42,7 @@ var (
 	// adding flags to the config to also have to set these fields.
 	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), nil, &CliqueConfig{Period: 0, Epoch: 30000}}
 
-	// TestChainConfig = &ChainConfig{big.NewInt(1), new(EthashConfig), nil}
+	TestChainConfig = &ChainConfig{big.NewInt(1), new(EthashConfig), nil}
 	// TestRules       = TestChainConfig.Rules(new(big.Int))
 )
 

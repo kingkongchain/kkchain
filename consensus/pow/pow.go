@@ -44,7 +44,7 @@ func (ethash *Ethash) Initialize(chain consensus.ChainReader, header *types.Head
 		return consensus.ErrUnknownAncestor
 	}
 
-	header.Difficulty = calcDifficultyFrontier(header.Time.Uint64(), parent)
+	header.Difficulty = ethash.CalcDifficulty(chain, header.Time.Uint64(), parent)
 	return nil
 }
 
@@ -81,7 +81,7 @@ func (ethash *Ethash) VerifyHeader(chain consensus.ChainReader, header *types.He
 		return errZeroBlockTime
 	}
 	// Verify the block's difficulty based in it's timestamp and parent's difficulty
-	expected := calcDifficultyFrontier(header.Time.Uint64(), parent)
+	expected := ethash.CalcDifficulty(chain, header.Time.Uint64(), parent)
 
 	if expected.Cmp(header.Difficulty) != 0 {
 		return fmt.Errorf("invalid difficulty: have %v, want %v", header.Difficulty, expected)
@@ -307,6 +307,13 @@ search:
 	// Datasets are unmapped in a finalizer. Ensure that the dataset stays live
 	// during sealing so it's not unmapped while being read.
 	runtime.KeepAlive(dataset)
+}
+
+// CalcDifficulty is the difficulty adjustment algorithm. It returns
+// the difficulty that a new block should have when created at time
+// given the parent block's time and difficulty.
+func (ethash *Ethash) CalcDifficulty(chain consensus.ChainReader, time uint64, parent *types.Header) *big.Int {
+	return calcDifficultyFrontier(time, parent)
 }
 
 // calcDifficultyFrontier is the difficulty adjustment algorithm. It returns the

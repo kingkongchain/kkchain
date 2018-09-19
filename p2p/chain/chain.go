@@ -3,6 +3,7 @@ package chain
 import (
 	"context"
 	"math"
+	"sync/atomic"
 
 	"math/big"
 
@@ -14,6 +15,8 @@ import (
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
 	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/sync"
+	syncPeer "github.com/invin/kkchain/sync/peer"
 	logrus "github.com/sirupsen/logrus"
 )
 
@@ -43,7 +46,7 @@ type Chain struct {
 
 	acceptTxs uint32 // Flag whether we're considered synchronised (enables transaction processing)
 
-	syncer *Syncer
+	syncer *sync.Syncer
 }
 
 func init() {
@@ -64,7 +67,7 @@ func New(host p2p.Host, bc *core.BlockChain) *Chain {
 	}
 
 	host.Register(c)
-	c.syncer = NewSyncer(c)
+	c.syncer = sync.New(c, bc) 
 
 	return c
 }
@@ -177,7 +180,7 @@ func (c *Chain) Disconnected(conn p2p.Conn) {
 	c.peers.Unregister(id)
 }
 
-func (c *Chain) removePeer(id string) {
+func (c *Chain) RemovePeer(id string) {
 	// Short circuit if the peer was already removed
 	peer := c.peers.Peer(id)
 	if peer == nil {
@@ -288,3 +291,92 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 // func (c *Chain) Peers() {
 // 	return c.peers
 // }
+
+// AcceptTxs sets flag on for accepts transactions
+func (c *Chain) AcceptTxs() {
+	atomic.StoreUint32(&c.acceptTxs, 1) // Mark initial sync done on any fetcher import
+}
+
+func (c *Chain) Peers() syncPeer.PeerSet {
+	return NewDPeerSet(c.peers)
+}
+// DPeerSet is a thin wrapper for original peerset, through which we can do testing easily
+type DPeerSet struct {
+	ps *PeerSet
+}
+
+// NewDPeerSet creates a download peerset
+func NewDPeerSet(ps *PeerSet) *DPeerSet {
+	return &DPeerSet{
+		ps: ps,
+	}
+}
+
+// Register registers peer 
+func (s *DPeerSet) Register(p syncPeer.Peer) error {
+	panic("not supported yet")
+	return nil
+}
+
+// UnRegister unregisters peer specified by id 
+func (s *DPeerSet) UnRegister(id string) error {
+	panic("not supported yet")
+	return nil
+}
+
+// Peer returns the peer with specified id
+func (s *DPeerSet) Peer(id string) syncPeer.Peer {
+	p := s.ps.Peer(id)
+	return NewDPeer(p)
+}
+
+// BestPeer returns the best peer
+func (s *DPeerSet) BestPeer() syncPeer.Peer {
+	if p := s.ps.BestPeer(); p != nil {
+		return NewDPeer(p)
+	}
+	
+	log.Warning("found no best peer, possible no peers")
+	return nil
+}
+
+// DPeer represent a peer for downloading. currently, It is a wrapper for peer
+// TODO: make it clear
+type DPeer struct {
+	p *peer
+}
+
+// NewDPeer represents a peer for downloading
+func NewDPeer(p *peer) *DPeer {
+	return &DPeer{
+		p: p,
+	}
+}
+
+// ID returns the identification of the peer
+func (dp *DPeer) ID() string {
+	return dp.p.ID
+}
+
+// Head returns the current head of the peer
+func (dp *DPeer) Head() (hash common.Hash, td *big.Int) {
+	return dp.p.Head()
+}
+
+// RequestHeadersByHash fetches a batch of blocks' headers corresponding to the
+// specified header query, based on the hash of an origin block.
+func (dp *DPeer) RequestHeadersByHash(origin common.Hash, amount int, skip int, reverse bool) error {
+	return dp.p.requestHeadersByHash(origin, amount, skip, reverse)
+}
+
+// RequestHeadersByNumber fetches a batch of blocks' headers corresponding to the
+// specified header query, based on the number of an origin block.
+func (dp *DPeer) RequestHeadersByNumber(origin uint64, amount int, skip int, reverse bool) error {
+	return dp.p.requestHeadersByNumber(origin, amount, skip, reverse)
+}
+
+// RequestBlocksByNumber fetches a batch of blocks corresponding to the
+// specified range
+func (dp *DPeer) RequestBlocksByNumber(origin uint64, amount int) error {
+	return dp.p.requestBlocksByNumber(origin, amount)
+}

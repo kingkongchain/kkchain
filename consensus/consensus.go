@@ -1,6 +1,8 @@
 package consensus
 
 import (
+	"math/big"
+
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
@@ -54,6 +56,8 @@ type Engine interface {
 	VerifyHeader(chain ChainReader, header *types.Header) error
 	Verify(block *types.Block) error
 	Close() error
+
+	CalcDifficulty(chain ChainReader, time uint64, parent *types.Header) *big.Int
 }
 
 type Network interface {

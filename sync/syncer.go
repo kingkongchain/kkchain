@@ -1,12 +1,18 @@
-package chain
+package sync
 
 import (
 	"sync/atomic"
 	"time"
+	"errors"
 
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
+	"github.com/invin/kkchain/sync/fetcher"
+	"github.com/invin/kkchain/sync/downloader"
+	"github.com/invin/kkchain/sync/peer"
+	"github.com/invin/kkchain/common"
 	"github.com/jbenet/goprocess"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -19,21 +25,34 @@ const (
 	Started
 )
 
+var (
+	errBusy                    = errors.New("busy")
+)
+
 // Syncer represents syncer for blockchain.
 // It includes both fetching and downloading
 type Syncer struct {
 	status     int32
 	proc       goprocess.Process
 	ctrl       *core.Controller
-	chain      *Chain
+	// chain      *Chain
+	buddy	   SyncBuddy
 	blockchain *core.BlockChain
-	downloader *Downloader
-	fetcher    *Fetcher
+	downloader *downloader.Downloader
+	fetcher    *fetcher.Fetcher
 }
 
-// NewSyncer creates a new syncer object
-func NewSyncer(chain *Chain) *Syncer {
-	bc := chain.blockchain
+// SyncBuddy defines interface for cooperating with synchronization 
+type SyncBuddy interface {
+	Peers() peer.PeerSet
+	// InsertBlocks(blocks types.Blocks) (int, error)
+	BroadcastBlock(block *types.Block, propagate bool)	
+	AcceptTxs()
+	RemovePeer(id string)
+}
+
+// New creates a new syncer object
+func New(buddy SyncBuddy, bc *core.BlockChain) *Syncer {
 	validator := func(header *types.Header) error {
 		return bc.Engine().VerifyHeader(bc, header)
 	}
@@ -41,15 +60,15 @@ func NewSyncer(chain *Chain) *Syncer {
 		return bc.CurrentBlock().NumberU64()
 	}
 	inserter := func(blocks types.Blocks) (int, error) {
-		atomic.StoreUint32(&chain.acceptTxs, 1) // Mark initial sync done on any fetcher import
+		buddy.AcceptTxs()
 		return bc.InsertChain(blocks)
 	}
 	return &Syncer{
 		status:     Stopped,
-		chain:      chain,
-		blockchain: chain.blockchain,
-		downloader: NewDownloader(chain),
-		fetcher:    NewFetcher(bc.GetBlockByHash, validator, chain.BroadcastBlock, heighter, inserter, chain.removePeer),
+		buddy:		buddy,
+		blockchain: bc,
+		downloader: downloader.New(bc, buddy.Peers()),
+		fetcher:    fetcher.New(bc.GetBlockByHash, validator, buddy.BroadcastBlock, heighter, inserter, buddy.RemovePeer),
 	}
 }
 
@@ -81,8 +100,8 @@ func (s *Syncer) Start() error {
 			case <-forceSync.C:
 				// Force a sync even if not enough peers are present
 				// TODO: with the best peer
-				peers := s.chain.peers
-				go s.synchronise(peers.BestPeer())
+				peers := s.buddy.Peers()
+				go s.Synchronise(peers.BestPeer())
 			}
 		}
 	}
@@ -93,13 +112,13 @@ func (s *Syncer) Start() error {
 }
 
 // synchronise tries to synchronise with best peer
-func (s *Syncer) synchronise(p *peer) {
+func (s *Syncer) Synchronise(p peer.Peer) {
 	// Short circuit if no peers are available
 	if p == nil {
 		return
 	}
 
-	log.Info("start synchonise with ", p.ID)
+	log.Info("start synchonise with ", p.ID())
 	// Make sure the peer's TD is higher than our own
 	currentBlock := s.blockchain.CurrentBlock()
 	td := s.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
@@ -110,15 +129,15 @@ func (s *Syncer) synchronise(p *peer) {
 	}
 
 	// Run the sync cycle, and disable fast sync if we've went past the pivot block
-	if err := s.downloader.Synchronise(p.ID, pHead, pTd, FullSync); err != nil {
+	if err := s.downloader.Synchronise(p.ID(), pHead, pTd, downloader.FullSync); err != nil {
 		log.Error("Failed to sync,error: ", err)
 		return
 	}
 
 	// Otherwise try to sync with downloader
-	atomic.StoreUint32(&s.chain.acceptTxs, 1) // Mark initial sync done
+	s.buddy.AcceptTxs()
 	if head := s.blockchain.CurrentBlock(); head.NumberU64() > 0 {
-		go s.chain.BroadcastBlock(head, false)
+		go s.buddy.BroadcastBlock(head, false)
 	}
 
 }
@@ -130,7 +149,6 @@ func (s *Syncer) Stop() {
 		s.proc = nil
 	}
 
-	// FIXME:
 	atomic.StoreInt32(&s.status, Stopped)
 }
 
@@ -139,6 +157,11 @@ func (s *Syncer) NewBlock(id string, block *types.Block) error {
 	// s.fetcher.Enqueue(id, block)
 	// TODO: compare TD and triggle synchronize if necessary
 	return nil
+}
+
+// Enqueue tries to fill gaps the the fetcher's future import queue.
+func (s *Syncer) Enqueue(peer string, block *types.Block) error {
+	return s.fetcher.Enqueue(peer, block)
 }
 
 // DeliverHeaders injects a new batch of block headers received from a remote
@@ -164,3 +187,10 @@ func (s *Syncer) DeliverBlocks(id string, blocks []*types.Block) (err error) {
 	// TODO: filter from fetchers
 	return s.downloader.DeliverBlocks(id, blocks)
 }
+
+// Notify notifies the hash of headers
+// TODO: move common definitions to a separate package
+func (s *Syncer) Notify(peer string, hash common.Hash, number uint64, time time.Time, blockFetcher func([]common.Hash) error) error {
+	return s.fetcher.Notify(peer, hash, number, time, blockFetcher)
+}
+

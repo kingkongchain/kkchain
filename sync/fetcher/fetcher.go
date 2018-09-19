@@ -1,21 +1,5 @@
-// Copyright 2015 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-// Package fetcher contains the block announcement based synchronisation.
-package chain
+package fetcher 
 
 import (
 	"errors"
@@ -25,8 +9,10 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/core/types"
+	"github.com/invin/kkchain/sync/peer"
 
 	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -65,9 +51,6 @@ type chainHeightFn func() uint64
 
 // chainInsertFn is a callback type to insert a batch of blocks into the local chain.
 type chainInsertFn func(types.Blocks) (int, error)
-
-// peerDropFn is a callback type for dropping a peer detected as malicious.
-type peerDropFn func(id string)
 
 // announce is the hash notification of the availability of a new block in the
 // network.
@@ -137,12 +120,12 @@ type Fetcher struct {
 	broadcastBlock blockBroadcasterFn // Broadcasts a block to connected peers
 	chainHeight    chainHeightFn      // Retrieves the current chain's height
 	insertChain    chainInsertFn      // Injects a batch of blocks into the chain
-	dropPeer       peerDropFn         // Drops a peer for misbehaving
+	dropPeer       peer.PeerDropFn         // Drops a peer for misbehaving
 
 }
 
 // New creates a block fetcher to retrieve blocks based on hash announcements.
-func NewFetcher(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn, chainHeight chainHeightFn, insertChain chainInsertFn, dropPeer peerDropFn) *Fetcher {
+func New(getBlock blockRetrievalFn, verifyHeader headerVerifierFn, broadcastBlock blockBroadcasterFn, chainHeight chainHeightFn, insertChain chainInsertFn, dropPeer peer.PeerDropFn) *Fetcher {
 	return &Fetcher{
 		notify: make(chan *announce),
 		inject: make(chan *inject),
