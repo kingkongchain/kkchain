@@ -332,8 +332,12 @@ func (s *DPeerSet) Peer(id string) syncPeer.Peer {
 
 // BestPeer returns the best peer
 func (s *DPeerSet) BestPeer() syncPeer.Peer {
-	p := s.ps.BestPeer()
-	return NewDPeer(p)
+	if p := s.ps.BestPeer(); p != nil {
+		return NewDPeer(p)
+	}
+	
+	log.Warning("found no best peer, possible no peers")
+	return nil
 }
 
 // DPeer represent a peer for downloading. currently, It is a wrapper for peer
