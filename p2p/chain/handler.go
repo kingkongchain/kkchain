@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/invin/kkchain/common"
+	sc "github.com/invin/kkchain/sync/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
 	"github.com/pkg/errors"
@@ -159,7 +160,7 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 	originNum := msg.StartNum
 	originHash := common.BytesToHash(msg.StartHash)
 
-	for !unknown && len(headers) < int(msg.Amount) && bytes < softResponseLimit && len(headers) < MaxHeaderFetch {
+	for !unknown && len(headers) < int(msg.Amount) && bytes < softResponseLimit && len(headers) < sc.MaxHeaderFetch {
 		// Retrieve the next header satisfying the query
 		var origin *types.Header
 		if hashMode {
@@ -389,7 +390,7 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 
 	// schedule all unknown hashes for retrival
 	for _, block := range unknown {
-		c.syncer.fetcher.Notify(id, block.Hash, block.Number, time.Now(), peer.requestHeader)
+		c.syncer.Notify(id, block.Hash, block.Number, time.Now(), peer.requestHeader)
 	}
 
 	return nil, nil
@@ -427,7 +428,7 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		peer.MarkBlock(receiveBlock.Hash())
 
 		// schedule import new block
-		c.syncer.fetcher.Enqueue(pid, receiveBlock)
+		c.syncer.Enqueue(pid, receiveBlock)
 
 		var (
 			trueHead = receiveBlock.ParentHash()
@@ -443,7 +444,7 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 			// scenario should easily be covered by the fetcher.
 			currentBlock := c.blockchain.CurrentBlock()
 			if trueTD.Cmp(c.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())) > 0 {
-				go c.syncer.synchronise(peer)
+				go c.syncer.Synchronise(NewDPeer(peer))
 			}
 		}
 	}

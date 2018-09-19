@@ -195,7 +195,7 @@ func (p *peer) SendNewBlockHashes(hashes []common.Hash, num []uint64) error {
 func (p *peer) SendNewBlock(block *types.Block) error {
 	p.knownBlocks.Add(block.Hash())
 	log.Info("@@@@@@@@@SendNewBlock,blocknum:", block.NumberU64(), "hash", block.Hash())
-	fmt.Println("@@@@@@@@@SendNewBlock %v", block)
+	fmt.Printf("@@@@@@@@@SendNewBlock %v", block)
 
 	blocks := []*types.Block{block}
 	bbytes, err := json.Marshal(blocks)

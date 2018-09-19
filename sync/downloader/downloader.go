@@ -1,8 +1,8 @@
-package chain
+package downloader
 
 import (
-	"errors"
 	"fmt"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,24 +12,27 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
+	"github.com/invin/kkchain/sync/peer"
+	sc "github.com/invin/kkchain/sync/common"
+	log "github.com/sirupsen/logrus"
 )
 
-var (
-	MaxHashFetch    = 512      // Amount of hashes to be fetched per retrieval request
-	MaxBlockFetch   = 128      // Amount of blocks to be fetched per retrieval request
-	MaxBlockPerSync = 128 * 20 // FIXME: Amount of blocks to be fetched per seesion
-	MaxHeaderFetch  = 192      // Amount of block headers to be fetched per retrieval request
-	MaxSkeletonSize = 128      // Number of header fetches to need for a skeleton assembly
-	MaxBodyFetch    = 128      // Amount of block bodies to be fetched per retrieval request
+// var (
+// 	MaxHashFetch    = 512      // Amount of hashes to be fetched per retrieval request
+// 	MaxBlockFetch   = 128      // Amount of blocks to be fetched per retrieval request
+// 	MaxBlockPerSync = 128 * 20 // FIXME: Amount of blocks to be fetched per seesion
+// 	MaxHeaderFetch  = 192      // Amount of block headers to be fetched per retrieval request
+// 	MaxSkeletonSize = 128      // Number of header fetches to need for a skeleton assembly
+// 	MaxBodyFetch    = 128      // Amount of block bodies to be fetched per retrieval request
 
-	rttMinEstimate   = 2 * time.Second  // Minimum round-trip time to target for download requests
-	rttMaxEstimate   = 20 * time.Second // Maximum round-trip time to target for download requests
-	rttMinConfidence = 0.1              // Worse confidence factor in our estimated RTT value
-	ttlScaling       = 3                // Constant scaling factor for RTT -> TTL conversion
-	ttlLimit         = time.Minute      // Maximum TTL allowance to prevent reaching crazy timeouts
+// 	rttMinEstimate   = 2 * time.Second  // Minimum round-trip time to target for download requests
+// 	rttMaxEstimate   = 20 * time.Second // Maximum round-trip time to target for download requests
+// 	rttMinConfidence = 0.1              // Worse confidence factor in our estimated RTT value
+// 	ttlScaling       = 3                // Constant scaling factor for RTT -> TTL conversion
+// 	ttlLimit         = time.Minute      // Maximum TTL allowance to prevent reaching crazy timeouts
 
-	fsMinFullBlocks        = 64              // Number of blocks to retrieve fully even in fast sync
-)
+// 	fsMinFullBlocks  = 64              // Number of blocks to retrieve fully even in fast sync
+// )
 
 var (
 	errBusy                    = errors.New("busy")
@@ -56,8 +59,6 @@ var (
 	errTooOld                  = errors.New("peer doesn't speak recent enough protocol version (need version >= 62)")
 )
 
-// peerDropFn is a callback type for dropping a peer detected as malicious.
-//type peerDropFn func(id string)
 
 type SyncMode int
 
@@ -154,13 +155,13 @@ type BlockChain interface {
 // Downloader is the package for downloading blocks from remote peers
 type Downloader struct {
 	blockchain 	BlockChain
-	dps			DPeerSetIntf
-	mode       SyncMode // Synchronization mode defining the strategy used (per sync cycle)
+	ps			peer.PeerSet
+	mode       	SyncMode // Synchronization mode defining the strategy used (per sync cycle)
 
 	pending  []*types.Block // Blocks waiting for inserting to blockchain
 	headerCh chan dataPack  // Channel receiving inbound block headers
 	blockCh  chan dataPack  // Channel receiving inbound blocks
-	dropPeer peerDropFn     // Drops a peer for misbehaving
+	dropPeer peer.PeerDropFn     // Drops a peer for misbehaving
 
 	synchronising int32         // Flag indicating if we're synchronizing or not
 	cancelPeer    string        // Identifier of the peer currently being used as the master (cancel on drop)
@@ -177,11 +178,11 @@ type Downloader struct {
 	quitLock sync.RWMutex  // Lock to prevent double closes
 }
 
-// NewDownloader creates a downloader object
-func NewDownloader(blockchain BlockChain, dps DPeerSetIntf) *Downloader {
+// New creates a downloader object
+func New(blockchain BlockChain, ps peer.PeerSet) *Downloader {
 	return &Downloader{
 		blockchain: blockchain,
-		dps: dps,
+		ps: ps,
 		headerCh:   make(chan dataPack, 1),
 		blockCh:    make(chan dataPack, 1),
 		quitCh:     make(chan struct{}),
@@ -248,7 +249,7 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 	d.mode = mode
 
 	// Retrieve the origin peer and initiate the downloading process
-	p := d.dps.Peer(id)
+	p := d.ps.Peer(id)
 	if p == nil {
 		return errUnknownPeer
 	}
@@ -258,7 +259,7 @@ func (d *Downloader) synchronise(id string, hash common.Hash, td *big.Int, mode 
 
 // syncWithPeer starts a block synchronization based on the hash chain from the
 // specified peer and head hash.
-func (d *Downloader) syncWithPeer(p Peer, hash common.Hash, td *big.Int) (err error) {
+func (d *Downloader) syncWithPeer(p peer.Peer, hash common.Hash, td *big.Int) (err error) {
 	// TODO: tomorrow
 	//d.startFeed.Send(StartEvent{})
 	d.blockchain.PostSyncStartEvent(core.StartEvent{})
@@ -344,7 +345,7 @@ func (d *Downloader) Terminate() {
 
 // fetchHeight retrieves the head header of the remote peer to aid in estimating
 // the total time a pending synchronisation would take.
-func (d *Downloader) fetchHeight(p Peer) (*types.Header, error) {
+func (d *Downloader) fetchHeight(p peer.Peer) (*types.Header, error) {
 	log.Debug("Retrieving remote chain height")
 
 	// Request the advertised remote head block and wait for the response
@@ -389,7 +390,7 @@ func (d *Downloader) fetchHeight(p Peer) (*types.Header, error) {
 // on the correct chain, checking the top N links should already get us a match.
 // In the rare scenario when we ended up on a long reorganisation (i.e. none of
 // the head links match), we do a binary search to find the common ancestor.
-func (d *Downloader) findAncestor(p Peer, height uint64) (uint64, error) {
+func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 	// Figure out the valid ancestor range to prevent rewrite attacks
 	floor, ceil := int64(-1), d.blockchain.CurrentBlock().NumberU64()
 
@@ -400,12 +401,12 @@ func (d *Downloader) findAncestor(p Peer, height uint64) (uint64, error) {
 	if head > height {
 		head = height
 	}
-	from := int64(head) - int64(MaxHeaderFetch)
+	from := int64(head) - int64(sc.MaxHeaderFetch)
 	if from < 0 {
 		from = 0
 	}
 	// Span out with 15 block gaps into the future to catch bad head reports
-	limit := 2 * MaxHeaderFetch / 16
+	limit := 2 * sc.MaxHeaderFetch / 16
 	count := 1 + int((int64(ceil)-from)/16)
 	if count > limit {
 		count = limit
@@ -544,7 +545,7 @@ func (d *Downloader) findAncestor(p Peer, height uint64) (uint64, error) {
 }
 
 // fetchBlocks retrieves the blocks from remote peer
-func (d *Downloader) fetchBlocks(p Peer, from uint64) error {
+func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
 	log.Debug("Directing block downloads", "origin", from)
 	defer log.Debug("Block download terminated")
 
@@ -560,8 +561,8 @@ func (d *Downloader) fetchBlocks(p Peer, from uint64) error {
 		ttl = d.requestTTL()
 		timeout.Reset(ttl)
 
-		log.Debug("Fetching full blocks", "count", MaxBlockFetch, "from", from, "requestTime", request)
-		go p.RequestBlocksByNumber(uint64(from), int(MaxBlockFetch))
+		log.Debug("Fetching full blocks", "count", sc.MaxBlockFetch, "from", from, "requestTime", request)
+		go p.RequestBlocksByNumber(uint64(from), int(sc.MaxBlockFetch))
 	}
 
 	// Start pulling the blocks until all is done
@@ -595,7 +596,7 @@ func (d *Downloader) fetchBlocks(p Peer, from uint64) error {
 				from += uint64(len(blocks))
 			}
 
-			if len(d.pending) < MaxBlockPerSync {
+			if len(d.pending) < sc.MaxBlockPerSync {
 				getBlocks(from)
 			} else {
 				log.Debug("Total downloaded blocks ", "count", len(d.pending))

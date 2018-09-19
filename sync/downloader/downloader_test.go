@@ -1,4 +1,4 @@
-package chain
+package downloader 
 
 import (
 	"testing"
@@ -16,6 +16,8 @@ import (
 	"github.com/invin/kkchain/storage"
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/params"
+	"github.com/invin/kkchain/sync/peer"
+	sc "github.com/invin/kkchain/sync/common"
 )
 
 var (
@@ -33,9 +35,8 @@ func init() {
 }
 
 type downloadTester struct {
-	chain *Chain
 	downloader *Downloader
-	peers map[string]Peer
+	peers map[string]peer.Peer
 
 	genesis *types.Block	// Genesis block used by the tester and peers
 	stateDb storage.Database // Database used by the tester for syncing from peers
@@ -82,8 +83,8 @@ func newTester() *downloadTester {
 	tester.stateDb.Put(genesis.StateRoot().Bytes(), []byte{0x00})
 
 	// tester.downloader = NewDownloader(FullSync, tester.stateDb, new(event.TypeMux), tester, nil, tester.dropPeer)
-	tester.downloader = NewDownloader(tester, tester)
-	tester.peers = make(map[string]Peer) 
+	tester.downloader = New(tester, tester)
+	tester.peers = make(map[string]peer.Peer) 
 	return tester
 }
 
@@ -377,7 +378,7 @@ func (dl *downloadTester) dropPeer(id string) {
 	dl.UnRegister(id)
 }
 
-func (dl *downloadTester) Register(p Peer) error {
+func (dl *downloadTester) Register(p peer.Peer) error {
 	// dl.lock.Lock()
 	// defer dl.lock.Unlock()
 
@@ -402,7 +403,7 @@ func (dl *downloadTester) UnRegister(id string) error {
 	return fmt.Errorf("not found peer %v", id)
 }
 
-func (dl *downloadTester) Peer(id string) Peer {
+func (dl *downloadTester) Peer(id string) peer.Peer {
 	dl.lock.Lock()
 	defer dl.lock.Unlock()
 	
@@ -413,6 +414,9 @@ func (dl *downloadTester) Peer(id string) Peer {
 	return nil
 }
 
+func (dl *downloadTester) BestPeer() peer.Peer {
+	panic("should not happen")
+}
 
 type downloadTesterPeer struct {
 	dl    *downloadTester
@@ -536,7 +540,7 @@ func assertOwnChain(t *testing.T, tester *downloadTester, length int) {
 // number of items of the various chain components.
 func assertOwnForkedChain(t *testing.T, tester *downloadTester, common int, lengths []int) {
 	// Initialize the counters for the first fork
-	headers, blocks, receipts := lengths[0], lengths[0], lengths[0]-fsMinFullBlocks
+	headers, blocks, receipts := lengths[0], lengths[0], lengths[0]- sc.FSMinFullBlocks
 
 	if receipts < 0 {
 		receipts = 1
@@ -545,7 +549,7 @@ func assertOwnForkedChain(t *testing.T, tester *downloadTester, common int, leng
 	for _, length := range lengths[1:] {
 		headers += length - common
 		blocks += length - common
-		receipts += length - common - fsMinFullBlocks
+		receipts += length - common - sc.FSMinFullBlocks 
 	}
 	switch tester.downloader.mode {
 	case FullSync:
