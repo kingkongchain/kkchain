@@ -145,11 +145,11 @@ func generateCache(dest []uint32, epoch uint64, seed []byte) {
 	defer func() {
 		elapsed := time.Since(start)
 
-		logFn := logger.Debug
+		logFn := logger.Debugf
 		if elapsed > 3*time.Second {
-			logFn = logger.Info
+			logFn = logger.Infof
 		}
-		logFn("Generated ethash verification cache", "elapsed", elapsed)
+		logFn("Generated ethash verification cache,elapsed: %v", elapsed)
 	}()
 	// Convert our destination slice to a byte buffer
 	header := *(*reflect.SliceHeader)(unsafe.Pointer(&dest))
@@ -173,7 +173,10 @@ func generateCache(dest []uint32, epoch uint64, seed []byte) {
 			case <-done:
 				return
 			case <-time.After(3 * time.Second):
-				logger.Info("Generating ethash verification cache", "percentage", atomic.LoadUint32(&progress)*100/uint32(rows)/4, "elapsed", time.Since(start))
+				logger.WithFields(logger.Fields{
+					"percentage": atomic.LoadUint32(&progress) * 100 / uint32(rows) / 4,
+					"elapsed":    time.Since(start),
+				}).Info("Generating ethash verification cache")
 			}
 		}
 	}()
@@ -273,11 +276,11 @@ func generateDataset(dest []uint32, epoch uint64, cache []uint32) {
 	defer func() {
 		elapsed := time.Since(start)
 
-		logFn := logger.Debug
+		logFn := logger.Debugf
 		if elapsed > 3*time.Second {
-			logFn = logger.Info
+			logFn = logger.Infof
 		}
-		logFn("Generated ethash verification cache", "elapsed", elapsed)
+		logFn("Generated ethash verification cache,elapsed: %v", elapsed)
 	}()
 
 	// Figure out whether the bytes need to be swapped for the machine
@@ -321,7 +324,10 @@ func generateDataset(dest []uint32, epoch uint64, cache []uint32) {
 				copy(dataset[index*hashBytes:], item)
 
 				if status := atomic.AddUint32(&progress, 1); status%percent == 0 {
-					logger.Info("Generating DAG in progress", "percentage", uint64(status*100)/(size/hashBytes), "elapsed", time.Since(start))
+					logger.WithFields(logger.Fields{
+						"percentage": uint64(status*100) / (size / hashBytes),
+						"elapsed":    time.Since(start),
+					}).Info("Generating DAG in progress")
 				}
 			}
 		}(i)

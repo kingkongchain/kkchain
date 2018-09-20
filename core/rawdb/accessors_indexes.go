@@ -18,7 +18,10 @@ func ReadTxLookupEntry(db DatabaseReader, hash common.Hash) (common.Hash, uint64
 
 	var entry TxLookupEntry
 	if err := rlp.DecodeBytes(data, &entry); err != nil {
-		log.Error("Invalid transaction lookup entry RLP", "hash", hash, "err", err)
+		log.WithFields(log.Fields{
+			"hash": hash,
+			"err":  err,
+		}).Error("Invalid transaction lookup entry RLP")
 		return common.Hash{}, 0, 0
 	}
 
@@ -30,19 +33,19 @@ func ReadTxLookupEntry(db DatabaseReader, hash common.Hash) (common.Hash, uint64
 func WriteTxLookupEntries(db DatabaseWriter, block *types.Block) {
 	for i, tx := range block.Transactions() {
 		entry := TxLookupEntry{
-			BlockHash: block.Hash(),
+			BlockHash:  block.Hash(),
 			BlockIndex: block.NumberU64(),
-			Index: uint64(i),
+			Index:      uint64(i),
 		}
 
 		data, err := rlp.EncodeToBytes(entry)
 
 		if err != nil {
-			log.Fatalln("Failed to encode transaction lookup entry", "err", err)
+			log.Fatalf("Failed to encode transaction lookup entry,err: %v", err)
 		}
 
 		if err := db.Put(txLookupKey(tx.Hash()), data); err != nil {
-			log.Fatalln("Failed to store transaction lookup entry", "err", err)
+			log.Fatalf("Failed to store transaction lookup entry,err: %v", err)
 		}
 	}
 }
@@ -62,7 +65,11 @@ func ReadTransaction(db DatabaseReader, hash common.Hash) (*types.Transaction, c
 
 	body := ReadBody(db, blockHash, blockNumber)
 	if body == nil || len(body.Transactions) <= int(txIndex) {
-		log.Error("Transaction referenced missing", "number", blockNumber, "hash", blockHash, "index", txIndex)
+		log.WithFields(log.Fields{
+			"number": blockNumber,
+			"hash":   blockHash,
+			"index":  txIndex,
+		}).Error("Transaction referenced missing")
 		return nil, common.Hash{}, 0, 0
 	}
 
@@ -78,7 +85,11 @@ func ReadReceipt(db DatabaseReader, hash common.Hash) (*types.Receipt, common.Ha
 	}
 	receipts := ReadReceipts(db, blockHash, blockNumber)
 	if len(receipts) <= int(receiptIndex) {
-		log.Error("Receipt refereced missing", "number", blockNumber, "hash", blockHash, "index", receiptIndex)
+		log.WithFields(log.Fields{
+			"number": blockNumber,
+			"hash":   blockHash,
+			"index":  receiptIndex,
+		}).Error("Receipt refereced missing")
 		return nil, common.Hash{}, 0, 0
 	}
 	return receipts[receiptIndex], blockHash, blockNumber, receiptIndex
@@ -94,6 +105,6 @@ func ReadBloomBits(db DatabaseReader, bit uint, section uint64, head common.Hash
 // section and bit index.
 func WriteBloomBits(db DatabaseWriter, bit uint, section uint64, head common.Hash, bits []byte) {
 	if err := db.Put(bloomBitsKey(bit, section, head), bits); err != nil {
-		log.Fatalln("Failed to store bloom bits", "err", err)
+		log.Fatalf("Failed to store bloom bits,err: %v", err)
 	}
 }

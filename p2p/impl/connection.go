@@ -82,9 +82,6 @@ func (c *Connection) WriteMessage(message proto.Message, protocol string) error 
 	// TODO: use integer
 	// set protocol
 	signed.Protocol = protocol
-
-	log.Info("Send message")
-
 	return c.write(c.conn, signed, &c.mux)
 }
 
@@ -150,7 +147,7 @@ func (c *Connection) write(w io.Writer, message *protobuf.Message, writerMutex *
 	for totalBytesWritten < len(buffer) && err == nil {
 		bytesWritten, err = w.Write(buffer[totalBytesWritten:])
 		if err != nil {
-			log.Errorf("stream: failed to write entire buffer, err: %+v\n", err)
+			log.Errorf("stream: failed to write entire buffer, err: %v", err)
 		}
 		totalBytesWritten += bytesWritten
 	}
@@ -234,12 +231,9 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 	// unmarshal message
 	var ptr types.DynamicAny
 	if err := types.UnmarshalAny(msg.Message, &ptr); err != nil {
-		log.Errorf("failed to unmarshal protobuf msg: %v", err)
+		log.Errorf("failed to unmarshal protobuf msg,error: %v", err)
 		return nil, "", err
 	}
-
-	log.Info("Received a message")
-
 	return ptr.Message, msg.Protocol, nil
 }
 

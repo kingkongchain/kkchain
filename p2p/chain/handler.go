@@ -2,7 +2,6 @@ package chain
 
 import (
 	"context"
-	"fmt"
 
 	"bytes"
 
@@ -15,10 +14,11 @@ import (
 	"time"
 
 	"github.com/invin/kkchain/common"
-	sc "github.com/invin/kkchain/sync/common"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/p2p"
+	sc "github.com/invin/kkchain/sync/common"
 	"github.com/pkg/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
@@ -66,8 +66,6 @@ func (c *Chain) handlerForMsgType(t Message_Type) chainHandler {
 
 // only retrive chain status
 func (c *Chain) handleChainStatus(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	fmt.Printf("接收到chain status消息：%v\n", pmes.String())
-
 	peerID := hex.EncodeToString(p.PublicKey)
 
 	localChainID := c.blockchain.ChainID()
@@ -200,7 +198,12 @@ func (c *Chain) handleGetBlockHeaders(ctx context.Context, p p2p.ID, pmes *Messa
 				next    = current + msg.Skip + 1
 			)
 			if next <= current {
-				log.Warningf("GetBlockHeaders skip overflow attack", "current", current, "skip", msg.Skip, "next", next, "attacker", p.String())
+				log.WithFields(logrus.Fields{
+					"current":  current,
+					"skip":     msg.Skip,
+					"next":     next,
+					"attacker": p.String(),
+				}).Warning("GetBlockHeaders skip overflow attack")
 				unknown = true
 			} else {
 				if header := c.blockchain.GetHeaderByNumber(next); header != nil {
@@ -256,7 +259,6 @@ func (c *Chain) handleBlockBodies(ctx context.Context, p p2p.ID, pmes *Message) 
 		log.Errorf("failed to unmarshal bytes to block body,error: %v", err)
 		return nil, err
 	}
-	log.Infof("receive %d block bodies", len(bodies))
 
 	// TODO: execute received body tx to local chain
 
@@ -277,7 +279,6 @@ func (c *Chain) handleBlockHeaders(ctx context.Context, p p2p.ID, pmes *Message)
 		log.Errorf("failed to unmarshal bytes to block header,error: %v", err)
 		return nil, err
 	}
-	log.Infof("receive %d headers", len(headers))
 
 	// FIXME: is ID right?
 	if len(headers) > 0 {
@@ -397,7 +398,6 @@ func (c *Chain) handleNewBlockHashs(ctx context.Context, p p2p.ID, pmes *Message
 }
 
 func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	log.Info("#####enter into handleNewBlock...")
 	msg := pmes.DataMsg
 	if msg == nil {
 		return nil, errEmptyMsgContent
@@ -413,12 +413,13 @@ func (c *Chain) handleNewBlock(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 		return nil, err
 	}
 
-	fmt.Printf("反序列化接收到 %d 个block\n", len(blocks))
 	for _, receiveBlock := range blocks {
-		fmt.Printf("反序列化接收到new block里的number消息：%v\n", receiveBlock.Header().Number)
-		fmt.Printf("反序列化接收到new block里的hash消息：%v\n", receiveBlock.Hash().String())
-		fmt.Printf("反序列化接收到new block里的ParentHash消息：%v\n", receiveBlock.ParentHash().String())
-		fmt.Printf("反序列化接收到new block里的Difficulty消息：%v\n", receiveBlock.Difficulty())
+		log.WithFields(logrus.Fields{
+			"number":      receiveBlock.Header().Number,
+			"hash":        receiveBlock.Hash().String(),
+			"parent_hash": receiveBlock.ParentHash().String(),
+			"difficulty":  receiveBlock.Difficulty(),
+		}).Info("receive a new block")
 
 		// fill up receive time and origin peer
 		receiveBlock.ReceivedAt = time.Now()
@@ -489,7 +490,6 @@ func (c *Chain) handleGetBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_
 }
 
 func (c *Chain) handleBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	log.Info("#####enter into handleBlock...")
 	msg := pmes.DataMsg
 	if msg == nil {
 		return nil, errEmptyMsgContent
@@ -502,15 +502,16 @@ func (c *Chain) handleBlocks(ctx context.Context, p p2p.ID, pmes *Message) (_ *M
 		log.Errorf("failed to unmarshal bytes to block,error: %v", err)
 		return nil, err
 	}
-	fmt.Printf("反序列化接收到 %d 个block\n", len(blocks))
 
 	//mark remote peer hash known this block
 	for _, block := range blocks {
 		c.peers.Peer(pid).MarkBlock(block.Hash())
-		fmt.Printf("反序列化接收到block里的number消息：%v\n", block.Header().Number)
-		fmt.Printf("反序列化接收到block里的hash消息：%v\n", block.Hash().String())
-		fmt.Printf("反序列化接收到block里的ParentHash消息：%v\n", block.ParentHash().String())
-		fmt.Printf("反序列化接收到block里的Difficulty消息：%v\n", block.Difficulty())
+		log.WithFields(logrus.Fields{
+			"number":      block.Header().Number,
+			"hash":        block.Hash().String(),
+			"parent_hash": block.ParentHash().String(),
+			"difficulty":  block.Difficulty(),
+		}).Info("receive history block")
 	}
 
 	c.syncer.DeliverBlocks(pid, blocks)

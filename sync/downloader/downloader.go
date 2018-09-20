@@ -1,8 +1,8 @@
 package downloader
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -12,8 +12,8 @@ import (
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
-	"github.com/invin/kkchain/sync/peer"
 	sc "github.com/invin/kkchain/sync/common"
+	"github.com/invin/kkchain/sync/peer"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -59,7 +59,6 @@ var (
 	errTooOld                  = errors.New("peer doesn't speak recent enough protocol version (need version >= 62)")
 )
 
-
 type SyncMode int
 
 // SyncMode represents the synchronization mode of downloader
@@ -97,7 +96,6 @@ type blockPack struct {
 func (b *blockPack) PeerID() string { return b.peerID }
 func (b *blockPack) Items() int     { return len(b.blocks) }
 func (b *blockPack) Stats() string  { return fmt.Sprintf("%d", len(b.blocks)) }
-
 
 // LightChain encapsulates functions required to synchronise a light chain.
 type LightChain interface {
@@ -145,23 +143,23 @@ type BlockChain interface {
 	// InsertReceiptChain inserts a batch of receipts into the local chain.
 	// InsertReceiptChain(types.Blocks, []types.Receipts) (int, error)
 
-	// PostSyncStartEvent posts start event at beginning 
+	// PostSyncStartEvent posts start event at beginning
 	PostSyncStartEvent(event core.StartEvent)
 
 	// PostSyncDoneEvent posts stop event after finished
-	PostSyncDoneEvent(event core.DoneEvent)	
+	PostSyncDoneEvent(event core.DoneEvent)
 }
 
 // Downloader is the package for downloading blocks from remote peers
 type Downloader struct {
-	blockchain 	BlockChain
-	ps			peer.PeerSet
-	mode       	SyncMode // Synchronization mode defining the strategy used (per sync cycle)
+	blockchain BlockChain
+	ps         peer.PeerSet
+	mode       SyncMode // Synchronization mode defining the strategy used (per sync cycle)
 
-	pending  []*types.Block // Blocks waiting for inserting to blockchain
-	headerCh chan dataPack  // Channel receiving inbound block headers
-	blockCh  chan dataPack  // Channel receiving inbound blocks
-	dropPeer peer.PeerDropFn     // Drops a peer for misbehaving
+	pending  []*types.Block  // Blocks waiting for inserting to blockchain
+	headerCh chan dataPack   // Channel receiving inbound block headers
+	blockCh  chan dataPack   // Channel receiving inbound blocks
+	dropPeer peer.PeerDropFn // Drops a peer for misbehaving
 
 	synchronising int32         // Flag indicating if we're synchronizing or not
 	cancelPeer    string        // Identifier of the peer currently being used as the master (cancel on drop)
@@ -182,7 +180,7 @@ type Downloader struct {
 func New(blockchain BlockChain, ps peer.PeerSet) *Downloader {
 	return &Downloader{
 		blockchain: blockchain,
-		ps: ps,
+		ps:         ps,
 		headerCh:   make(chan dataPack, 1),
 		blockCh:    make(chan dataPack, 1),
 		quitCh:     make(chan struct{}),
@@ -201,16 +199,19 @@ func (d *Downloader) Synchronise(id string, head common.Hash, td *big.Int, mode 
 	case errTimeout, errBadPeer, errStallingPeer,
 		errEmptyHeaderSet, errPeersUnavailable, errTooOld,
 		errInvalidAncestor, errInvalidChain:
-		log.Warning("Synchronisation failed, dropping peer", "peer", id, "err", err)
+		log.WithFields(log.Fields{
+			"peer": id,
+			"err":  err,
+		}).Error("Synchronisation failed, dropping peer")
 		if d.dropPeer == nil {
 			// The dropPeer method is nil when `--copydb` is used for a local copy.
 			// Timeouts can occur if e.g. compaction hits at the wrong time, and can be ignored
-			log.Warning("Downloader wants to drop peer, but peerdrop-function is not set", "peer", id)
+			log.Warningf("Downloader wants to drop peer, but peerdrop-function is not set,peer: %s", id)
 		} else {
 			d.dropPeer(id)
 		}
 	default:
-		log.Warning("Synchronisation failed, retrying", "err", err)
+		log.Errorf("Synchronisation failed, retrying,err: %v", err)
 	}
 	return err
 }
@@ -270,9 +271,8 @@ func (d *Downloader) syncWithPeer(p peer.Peer, hash common.Hash, td *big.Int) (e
 		d.blockchain.PostSyncDoneEvent(core.DoneEvent{err})
 	}()
 
-	log.Debug("Synchronising with the network", "peer", p.ID(), "head", hash, "td", td, "mode", d.mode)
 	defer func(start time.Time) {
-		log.Debug("Synchronisation terminated", "elapsed", time.Since(start))
+		log.Debugf("Synchronisation terminated,elapsed: %v", time.Since(start))
 	}(time.Now())
 
 	// Look up the sync boundaries: the common ancestor and the target block
@@ -346,7 +346,6 @@ func (d *Downloader) Terminate() {
 // fetchHeight retrieves the head header of the remote peer to aid in estimating
 // the total time a pending synchronisation would take.
 func (d *Downloader) fetchHeight(p peer.Peer) (*types.Header, error) {
-	log.Debug("Retrieving remote chain height")
 
 	// Request the advertised remote head block and wait for the response
 	head, _ := p.Head()
@@ -362,21 +361,20 @@ func (d *Downloader) fetchHeight(p peer.Peer) (*types.Header, error) {
 		case packet := <-d.headerCh:
 			// Discard anything not from the origin peer
 			if packet.PeerID() != p.ID() {
-				log.Debug("Received headers from incorrect peer", "peer", packet.PeerID())
+				log.Debugf("Received headers from incorrect peer,id: %s", packet.PeerID())
 				break
 			}
 			// Make sure the peer actually gave something valid
 			headers := packet.(*headerPack).headers
 			if len(headers) != 1 {
-				log.Debug("Multiple headers for single request", "headers", len(headers))
+				log.Debugf("Multiple headers for single request,header count: %d", len(headers))
 				return nil, errBadPeer
 			}
 			head := headers[0]
-			log.Debug("Remote head header identified", "number", head.Number, "hash", head.Hash())
 			return head, nil
 
 		case <-timeout:
-			log.Debug("Waiting for head header timed out", "elapsed", ttl)
+			log.Warnf("Waiting for head header timed out,elapsed: %v", ttl)
 			return nil, errTimeout
 
 		case <-d.blockCh:
@@ -393,8 +391,6 @@ func (d *Downloader) fetchHeight(p peer.Peer) (*types.Header, error) {
 func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 	// Figure out the valid ancestor range to prevent rewrite attacks
 	floor, ceil := int64(-1), d.blockchain.CurrentBlock().NumberU64()
-
-	log.Debug("Looking for common ancestor", "local", ceil, "remote", height)
 
 	// Request the topmost blocks to short circuit binary ancestor lookup
 	head := ceil
@@ -427,7 +423,7 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 		case packet := <-d.headerCh:
 			// Discard anything not from the origin peer
 			if packet.PeerID() != p.ID() {
-				log.Debug("Received headers from incorrect peer", "peer", packet.PeerID())
+				log.Warnf("Received headers from incorrect peer,id: %s", packet.PeerID())
 				break
 			}
 			// Make sure the peer actually gave something valid
@@ -439,7 +435,11 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 			// Make sure the peer's reply conforms to the request
 			for i := 0; i < len(headers); i++ {
 				if number := headers[i].Number.Int64(); number != from+int64(i)*16 {
-					log.Warning("Head headers broke chain ordering", "index", i, "requested", from+int64(i)*16, "received", number)
+					log.WithFields(log.Fields{
+						"index":     i,
+						"requested": from + int64(i)*16,
+						"received":  number,
+					}).Warning("Head headers broke chain ordering")
 					return 0, errInvalidChain
 				}
 			}
@@ -456,7 +456,10 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 
 					// If every header is known, even future ones, the peer straight out lied about its head
 					if number > height && i == limit-1 {
-						log.Warning("Lied about chain head", "reported", height, "found", number)
+						log.WithFields(log.Fields{
+							"reported": height,
+							"found":    number,
+						}).Warning("Lied about chain head")
 						return 0, errStallingPeer
 					}
 					break
@@ -464,7 +467,7 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 			}
 
 		case <-timeout:
-			log.Debug("Waiting for head header timed out", "elapsed", ttl)
+			log.Debugf("Waiting for head header timed out,elapsed: %v", ttl)
 			return 0, errTimeout
 
 		case <-d.blockCh:
@@ -474,10 +477,17 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 	// If the head fetch already found an ancestor, return
 	if hash != (common.Hash{}) {
 		if int64(number) <= floor {
-			log.Warning("Ancestor below allowance", "number", number, "hash", hash, "allowance", floor)
+			log.WithFields(log.Fields{
+				"number":    number,
+				"hash":      hash.String(),
+				"allowance": floor,
+			}).Warning("Ancestor below allowance")
 			return 0, errInvalidAncestor
 		}
-		log.Debug("Found common ancestor", "number", number, "hash", hash)
+		log.WithFields(log.Fields{
+			"number": number,
+			"hash":   hash.String(),
+		}).Debug("Found common ancestor")
 		return number, nil
 	}
 	// Ancestor not found, we need to binary search over our chain
@@ -503,13 +513,13 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 			case packer := <-d.headerCh:
 				// Discard anything not from the origin peer
 				if packer.PeerID() != p.ID() {
-					log.Debug("Received headers from incorrect peer", "peer", packer.PeerID())
+					log.Debugf("Received headers from incorrect peer,id: %s", packer.PeerID())
 					break
 				}
 				// Make sure the peer actually gave something valid
 				headers := packer.(*headerPack).headers
 				if len(headers) != 1 {
-					log.Debug("Multiple headers for single request", "headers", len(headers))
+					log.Debugf("Multiple headers for single request,header count: %d", len(headers))
 					return 0, errBadPeer
 				}
 				arrived = true
@@ -521,13 +531,17 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 				}
 				header := d.blockchain.GetHeaderByHash(headers[0].Hash()) // Independent of sync mode, header surely exists
 				if header.Number.Uint64() != check {
-					log.Debug("Received non requested header", "number", header.Number, "hash", header.Hash(), "request", check)
+					log.WithFields(log.Fields{
+						"number":  header.Number,
+						"hash":    header.Hash().String(),
+						"request": check,
+					}).Debug("Received non requested header")
 					return 0, errBadPeer
 				}
 				start = check
 
 			case <-timeout:
-				log.Debug("Waiting for search header timed out", "elapsed", ttl)
+				log.Debugf("Waiting for search header timed out,elapsed: %v", ttl)
 				return 0, errTimeout
 
 			case <-d.blockCh:
@@ -537,20 +551,27 @@ func (d *Downloader) findAncestor(p peer.Peer, height uint64) (uint64, error) {
 	}
 	// Ensure valid ancestry and return
 	if int64(start) <= floor {
-		log.Warning("Ancestor below allowance", "number", start, "hash", hash, "allowance", floor)
+		log.WithFields(log.Fields{
+			"number":    start,
+			"hash":      hash.String(),
+			"allowance": floor,
+		}).Warning("Ancestor below allowance")
 		return 0, errInvalidAncestor
 	}
-	log.Debug("Found common ancestor", "number", start, "hash", hash)
+	log.WithFields(log.Fields{
+		"number": number,
+		"hash":   hash.String(),
+	}).Debug("Found common ancestor")
 	return start, nil
 }
 
 // fetchBlocks retrieves the blocks from remote peer
 func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
-	log.Debug("Directing block downloads", "origin", from)
+	log.Debugf("Directing block downloads,origin: %d", from)
 	defer log.Debug("Block download terminated")
 
 	request := time.Now()
-	
+
 	timeout := time.NewTimer(0) // timer to dump a non-responsive active peer
 	<-timeout.C                 // timeout channel should be initially empty
 	defer timeout.Stop()
@@ -561,7 +582,11 @@ func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
 		ttl = d.requestTTL()
 		timeout.Reset(ttl)
 
-		log.Debug("Fetching full blocks", "count", sc.MaxBlockFetch, "from", from, "requestTime", request)
+		log.WithFields(log.Fields{
+			"count":       sc.MaxBlockFetch,
+			"from":        from,
+			"requestTime": request,
+		}).Debug("Fetching full blocks")
 		go p.RequestBlocksByNumber(uint64(from), int(sc.MaxBlockFetch))
 	}
 
@@ -576,7 +601,7 @@ func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
 		case packet := <-d.blockCh:
 			// Make sure the active peer is giving us the skeleton headers
 			if packet.PeerID() != p.ID() {
-				log.Debug("Received block from incorrect peer", "peer", packet.PeerID())
+				log.Debugf("Received block from incorrect peer,id: %s", packet.PeerID())
 				break
 			}
 
@@ -590,7 +615,7 @@ func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
 
 			blocks := packet.(*blockPack).blocks
 			if len(blocks) > 0 {
-				log.Debug("Received blocks", "count", len(blocks))
+				log.Debugf("Received blocks,count: %d", len(blocks))
 
 				d.pending = append(d.pending, blocks...)
 				from += uint64(len(blocks))
@@ -599,7 +624,7 @@ func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
 			if len(d.pending) < sc.MaxBlockPerSync {
 				getBlocks(from)
 			} else {
-				log.Debug("Total downloaded blocks ", "count", len(d.pending))
+				log.Debugf("Total downloaded blocks,count: %d", len(d.pending))
 				return nil
 			}
 
@@ -607,11 +632,11 @@ func (d *Downloader) fetchBlocks(p peer.Peer, from uint64) error {
 			if d.dropPeer == nil {
 				// The dropPeer method is nil when `--copydb` is used for a local copy.
 				// Timeouts can occur if e.g. compaction hits at the wrong time, and can be ignored
-				log.Warning("Downloader wants to drop peer, but peerdrop-function is not set", "peer", p.ID())
+				log.Warningf("Downloader wants to drop peer, but peerdrop-function is not set,peer id: %s", p.ID())
 				break
 			}
 			// Header retrieval timed out, consider the peer bad and drop
-			log.Debug("Header request timed out", "elapsed", ttl)
+			log.Debugf("Header request timed out,elapsed: %v", ttl)
 			d.dropPeer(p.ID())
 
 			return errBadPeer
@@ -637,7 +662,11 @@ func (d *Downloader) importBlocks() error {
 
 	// Insert to local blockchain
 	if index, err := d.blockchain.InsertChain(d.pending); err != nil {
-		log.Debug("Downloaded item processing failed", "number", d.pending[index].NumberU64, "hash", d.pending[index].Hash, "err", err)
+		log.WithFields(log.Fields{
+			"number": d.pending[index].NumberU64,
+			"hash":   d.pending[index].Hash().String(),
+			"err":    err,
+		}).Debug("Downloaded item processing failed")
 		return errInvalidChain
 	}
 

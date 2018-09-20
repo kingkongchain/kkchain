@@ -267,13 +267,13 @@ func (ethash *Ethash) mine(block *types.Block, id int, seed uint64, abort chan s
 		nonce    = seed
 	)
 	//logger := log.New("miner", id)
-	log.Debug("Started ethash search for new nonces", "seed", seed)
+	log.Debugf("Started ethash search for new nonces,seed: %v", seed)
 search:
 	for {
 		select {
 		case <-abort:
 			// Mining terminated, update stats and abort
-			log.Debug("Ethash nonce search aborted", "attempts", nonce-seed)
+			log.Debugf("Ethash nonce search aborted,attempts: %v", nonce-seed)
 			//ethash.hashrate.Mark(attempts)
 			break search
 
@@ -292,12 +292,18 @@ search:
 				header.Nonce = types.EncodeNonce(nonce)
 				header.MixDigest = common.BytesToHash(digest)
 
-				// Seal and return a block (if still needed)
+				// Seal and return a block (if still needed) "attempts", nonce-seed, "nonce", nonce
 				select {
 				case found <- block.WithSeal(header):
-					log.Debug("Ethash nonce found and reported", "attempts", nonce-seed, "nonce", nonce)
+					log.WithFields(log.Fields{
+						"attempts": nonce - seed,
+						"nonce":    nonce,
+					}).Debug("Ethash nonce found and reported")
 				case <-abort:
-					log.Debug("Ethash nonce found but discarded", "attempts", nonce-seed, "nonce", nonce)
+					log.WithFields(log.Fields{
+						"attempts": nonce - seed,
+						"nonce":    nonce,
+					}).Debug("Ethash nonce found but discarded")
 				}
 				break search
 			}

@@ -10,8 +10,8 @@ import (
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/dht"
 	"github.com/jbenet/goprocess"
-	log "github.com/sirupsen/logrus"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -70,9 +70,6 @@ func NewNetwork(privateKeyPath, address string, conf p2p.Config, bc *core.BlockC
 // Start kicks off the p2p stack
 func (n *Network) Start() error {
 	// TODO: use singleton mode
-
-	log.Info("start P2P network")
-
 	if n.keys == nil {
 		return fmt.Errorf("Server.PrivateKey must be set to a non-nil key")
 	}
@@ -196,7 +193,7 @@ func (n *Network) bootstrap(p goprocess.Process) {
 		case <-p.Closing():
 			return
 		default:
-			log.Info("connect to ", node)
+			log.Infof("connect to %s", node)
 		}
 
 		// Parse peer address to get IP
@@ -209,7 +206,6 @@ func (n *Network) bootstrap(p goprocess.Process) {
 		// Reuse connection if it's already connected
 		conn, _ := n.host.Connection(peer.ID)
 		if conn != nil {
-			log.Info("reuse connection??")
 			continue
 		}
 
@@ -222,7 +218,6 @@ func (n *Network) bootstrap(p goprocess.Process) {
 			}
 
 			// TODO: optimize
-			log.Infof("success to connect boost node: %s", peer.String())
 		}()
 	}
 }

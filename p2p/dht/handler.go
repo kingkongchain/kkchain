@@ -3,12 +3,9 @@ package dht
 import (
 	"context"
 	"encoding/hex"
-	"fmt"
 	"time"
 
 	"github.com/invin/kkchain/p2p"
-	
-	log "github.com/sirupsen/logrus"
 )
 
 // dhthandler specifies the signature of functions that handle DHT messages.
@@ -44,11 +41,8 @@ func (dht *DHT) handlePutValue(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 }
 
 func (dht *DHT) handleFindPeer(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
-	log.Info("handleFindPeer...")
 	// setup response
 	resp := NewMessage(Message_FIND_NODE_RESULT, "")
-
-	fmt.Printf("target: %s\n", pmes.Key)
 	target, err := hex.DecodeString(pmes.Key)
 	if err != nil {
 		return nil, err
@@ -66,7 +60,6 @@ func (dht *DHT) handleFindPeer(ctx context.Context, p p2p.ID, pmes *Message) (_ 
 
 func (dht *DHT) handleFindPeerResult(ctx context.Context, p p2p.ID, pmes *Message) (_ *Message, err error) {
 	pbPeers := pmes.CloserPeers
-	log.Infof("handleFindPeerResult %d\n", len(pbPeers))
 	for _, p := range pbPeers {
 		peer := PBPeerToPeerID(*p)
 		dht.AddPeer(*peer)

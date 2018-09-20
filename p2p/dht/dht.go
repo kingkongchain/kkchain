@@ -119,7 +119,6 @@ func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 
 	// if nil response, return it before serializing
 	if rpmes == nil {
-		log.Warning("got back nil response from request")
 		return
 	}
 
@@ -130,7 +129,7 @@ func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 		return
 	}
 
-	log.Infof("dht handle %d success and send resp to: %s, conn: %v", msg.Type, pid, c)
+	log.Infof("dht handle %d success and send resp to: %s", msg.Type, pid)
 }
 
 func (dht *DHT) Start() {
@@ -139,15 +138,12 @@ func (dht *DHT) Start() {
 	//load table from db
 	dht.loadTableFromDB()
 
-	log.Info("start sync loop.....")
 	go dht.syncLoop()
 	go dht.checkPingPong()
 }
 
 func (dht *DHT) Stop() {
-	log.Info("stopping sync loop.....")
 	dht.quitCh <- true
-
 }
 
 func (dht *DHT) syncLoop() {
@@ -198,7 +194,7 @@ func (dht *DHT) RemovePeer(peer PeerID) {
 
 //FindTargetNeighbours searches target's neighbours from given PeerID
 func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
-	log.Infof("FindTargetNeighbours from %s, target: %s\n", peer, hex.EncodeToString(target))
+	log.Infof("FindTargetNeighbours from %s, target: %s\n", hex.EncodeToString(peer.PublicKey), hex.EncodeToString(target))
 	if peer.Equals(dht.self) {
 		return
 	}
@@ -235,7 +231,6 @@ func RandomTargetID() []byte {
 
 // SyncRouteTable sync route table.
 func (dht *DHT) SyncRouteTable() {
-	log.Info("timer trigger")
 	dht.table.printTable()
 
 	target := RandomTargetID()
@@ -245,7 +240,7 @@ func (dht *DHT) SyncRouteTable() {
 	for _, addr := range dht.network.Bootstraps() {
 		pid, err := ParsePeerAddr(addr)
 		if err != nil {
-			log.Error("connect with error ", err)
+			log.Errorf("connect with error: %v", err)
 			continue
 		}
 
@@ -311,7 +306,6 @@ func (dht *DHT) loadTableFromDB() {
 
 // Connected is called when new connection is established
 func (dht *DHT) Connected(c p2p.Conn) {
-	log.Infof("在dht中获取通知：connected, %s\n", c.RemotePeer())
 	if c.RemotePeer().Address == "" || c.RemotePeer().PublicKey == nil {
 		return
 	}
@@ -322,7 +316,6 @@ func (dht *DHT) Connected(c p2p.Conn) {
 
 // Disconnected is called when the connection is closed
 func (dht *DHT) Disconnected(c p2p.Conn) {
-	log.Info("disconnect")
 }
 
 func (dht *DHT) ping(p PeerID) {
@@ -342,7 +335,9 @@ func (dht *DHT) ping(p PeerID) {
 			dht.pingpong.DeleteStopCh(peer)
 			return
 		case <-pingTicker.C:
-			log.Infof("sending ping to %s\n", p.Address)
+			log.WithFields(log.Fields{
+				"peer": p.Address,
+			}).Info("sending ping to peer")
 			pmes := NewMessage(Message_PING, "")
 
 			conn, err := dht.sendMessage(p, pmes)

@@ -54,14 +54,12 @@ func (m *Miner) onEvent() {
 	for {
 		select {
 		case <-m.syncStartCh:
-			logger.Info("sync start....")
 			atomic.StoreInt32(&m.syncDone, 0)
 			if m.Mining() {
 				m.Stop()
 				atomic.StoreInt32(&m.isLocalMining, 1)
 			}
 		case <-m.syncDoneCh:
-			logger.Info("sync done....")
 			atomic.StoreInt32(&m.syncDone, 1)
 			if atomic.LoadInt32(&m.isLocalMining) == 1 {
 				m.Start()
@@ -84,12 +82,10 @@ func (m *Miner) Start() {
 	atomic.StoreInt32(&m.isLocalMining, 1)
 
 	if atomic.LoadInt32(&m.syncDone) == 0 {
-		logger.Info("syncing, will start miner afterwards")
 		return
 	}
 
 	if m.worker.isRunning() {
-		logger.Info("mining")
 		return
 	}
 

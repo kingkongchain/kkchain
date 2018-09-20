@@ -151,7 +151,6 @@ func (w *worker) close() {
 
 func (w *worker) waitResult() {
 	for {
-		log.Debug("waitResult....")
 		select {
 		case result := <-w.resultCh:
 			// Short circuit when receiving empty result.
@@ -172,7 +171,7 @@ func (w *worker) waitResult() {
 			// Commit block and state to database.
 			err := w.chain.WriteBlockWithState(block, result.receipts, result.state)
 			if err != nil {
-				log.Error("Failed writing block to chain", "err", err)
+				log.Errorf("Failed writing block to chain,err: %v", err)
 				continue
 			}
 			// Broadcast the block and announce chain insertion event
@@ -183,7 +182,6 @@ func (w *worker) waitResult() {
 
 			events = append(events, core.ChainHeadEvent{Block: block})
 			events = append(events, core.NewMinedBlockEvent{Block: block})
-			log.Info("********Begin PostChainEvents----")
 			w.chain.PostChainEvents(events, logs)
 
 			//
@@ -216,7 +214,7 @@ func (w *worker) commitTask() {
 	// this will ensure we're not going off too far in the future
 	if now := time.Now().Unix(); tstamp > now+1 {
 		wait := time.Duration(tstamp-now) * time.Second
-		log.Info("Mining too far in the future", "wait", wait)
+		log.Infof("Mining too far in the future,wait: %v", wait)
 		time.Sleep(wait)
 	}
 
@@ -232,7 +230,7 @@ func (w *worker) commitTask() {
 	// Could potentially happen if starting to mine in an odd state.
 	err := w.currentContext(parent, header)
 	if err != nil {
-		log.Error("Failed to create mining context", "err", err)
+		log.Errorf("Failed to create mining context,err: %v", err)
 		return
 	}
 
@@ -289,7 +287,6 @@ func (w *worker) taskLoop() {
 		}
 	}
 	for {
-		log.Debug("taskLoop....")
 		select {
 		case task := <-w.taskCh:
 
@@ -318,7 +315,7 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 		res = t
 	} else {
 		if err != nil {
-			log.Debug("Block sealing failed", "err", err)
+			log.Errorf("Block sealing failed,err: %v", err)
 		}
 		res = nil
 	}
@@ -345,7 +342,16 @@ func (w *worker) currentContext(parent *types.Block, header *types.Header) error
 }
 
 func (w *worker) blockinfo(desc string, block *types.Block) {
-	fmt.Printf("%s%s", desc, block.String())
+	log.WithFields(log.Fields{
+		"number":     block.NumberU64(),
+		"hash":       block.Hash().String(),
+		"parentHash": block.ParentHash().String(),
+		"stateRoot":  block.StateRoot().String(),
+		"difficulty": block.Difficulty(),
+		"gasLimit":   block.GasLimit(),
+		"gasUsed":    block.GasUsed(),
+		"nonce":      block.Nonce(),
+	}).Info(desc)
 }
 
 var (

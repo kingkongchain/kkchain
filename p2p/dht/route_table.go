@@ -5,6 +5,8 @@ import (
 	"sort"
 	"sync"
 
+	"encoding/hex"
+
 	log "github.com/sirupsen/logrus"
 )
 
@@ -229,13 +231,20 @@ func (t *RoutingTable) Bucket(id int) *Bucket {
 }
 
 func (t *RoutingTable) printTable() {
-	log.Infof("self = %s\n", t.self)
+	log.WithFields(log.Fields{
+		"self_address": t.self.Address,
+		"self_id":      hex.EncodeToString(t.self.PublicKey),
+	}).Info("peer self info")
 	for idx, bucket := range t.buckets {
 		bucket.mutex.RLock()
 
 		for e := bucket.Front(); e != nil; e = e.Next() {
 			id := e.Value.(PeerID)
-			log.Infof("distance: %d, %s\n", idx, id)
+			log.WithFields(log.Fields{
+				"address":  id.Address,
+				"id":       hex.EncodeToString(id.PublicKey),
+				"distance": idx,
+			}).Info()
 		}
 
 		bucket.mutex.RUnlock()

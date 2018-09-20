@@ -152,13 +152,16 @@ func (bc *BlockChain) loadLastState() error {
 	currentBlock := bc.GetBlockByHash(head)
 	if currentBlock == nil {
 		// Corrupt or empty database, init from scratch
-		log.Warn("Head block missing, resetting chain", "hash", head)
+		log.Warnf("Head block missing, resetting chain,hash: %v", head.String())
 		return bc.Reset()
 	}
 	// Make sure the state associated with the block is available
 	if _, err := state.New(currentBlock.StateRoot(), bc.stateCache); err != nil {
 		// Dangling block without a state associated, init from scratch
-		log.Warn("Head state missing, repairing chain", "number", currentBlock.Number(), "hash", currentBlock.Hash())
+		log.WithFields(log.Fields{
+			"number": currentBlock.Number(),
+			"hash":   currentBlock.Hash().String(),
+		}).Warn("Head state missing, repairing chain")
 		if err := bc.repair(&currentBlock); err != nil {
 			return err
 		}
@@ -177,8 +180,16 @@ func (bc *BlockChain) loadLastState() error {
 	headerTd := bc.GetTd(currentHeader.Hash(), currentHeader.Number.Uint64())
 	blockTd := bc.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
 
-	log.Info("Loaded most recent local header", "number", currentHeader.Number, "hash", currentHeader.Hash(), "td", headerTd)
-	log.Info("Loaded most recent local full block", "number", currentBlock.Number(), "hash", currentBlock.Hash(), "td", blockTd)
+	log.WithFields(log.Fields{
+		"number": currentHeader.Number,
+		"hash":   currentHeader.Hash().String(),
+		"td":     headerTd,
+	}).Info("Loaded most recent local header")
+	log.WithFields(log.Fields{
+		"number": currentBlock.NumberU64(),
+		"hash":   currentBlock.Hash().String(),
+		"td":     blockTd,
+	}).Info("Loaded most recent local full block")
 
 	return nil
 }
@@ -193,7 +204,10 @@ func (bc *BlockChain) repair(head **types.Block) error {
 	for {
 		// Abort if we've rewound to a head block that does have associated state
 		if _, err := state.New((*head).StateRoot(), bc.stateCache); err == nil {
-			log.Info("Rewound blockchain to past state", "number", (*head).Number(), "hash", (*head).Hash())
+			log.WithFields(log.Fields{
+				"number": (*head).NumberU64(),
+				"hash":   (*head).Hash(),
+			}).Info("Rewound blockchain to past state")
 			return nil
 		}
 		// Otherwise rewind one block and recheck state availability there
@@ -218,7 +232,7 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 
 	// Prepare the genesis block and reinitialise the chain
 	if err := bc.WriteTd(genesis.Hash(), genesis.NumberU64(), genesis.Difficulty()); err != nil {
-		log.Error("Failed to write genesis block TD", "err", err)
+		log.Errorf("Failed to write genesis block TD,err: %v", err)
 	}
 	rawdb.WriteBlock(bc.db, genesis)
 
@@ -234,7 +248,7 @@ func (bc *BlockChain) ResetWithGenesisBlock(genesis *types.Block) error {
 // though, the head may be further rewound if block bodies are missing (non-archive
 // nodes after a fast sync).
 func (bc *BlockChain) SetHead(head uint64) error {
-	log.Warnf("Rewinding blockchain", "target", head)
+	log.Warnf("Rewinding blockchain,target: %v", head)
 
 	bc.mu.Lock()
 	defer bc.mu.Unlock()
@@ -318,7 +332,6 @@ func resolvePath(path string) string {
 
 // WriteBlockWithState writes the block and all associated state to the database.
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
-	log.Info("*******enter into WriteBlockWithState")
 	bc.wg.Add(1)
 	defer bc.wg.Done()
 
@@ -369,7 +382,6 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	if reorg {
 		// Reorganise the chain if the parent is not the head block
 		if block.ParentHash() != currentBlock.Hash() {
-			fmt.Println("!!!!!!!enter into WriteBlockWithState reorg")
 			if err := bc.reorg(currentBlock, block); err != nil {
 				return err
 			}
@@ -393,7 +405,6 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 // to be part of the new canonical chain and accumulates potential missing transactions and post an
 // event about them
 func (bc *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
-	log.Info("*******enter into reorg")
 	var (
 		newChain    types.Blocks
 		oldChain    types.Blocks
@@ -441,20 +452,31 @@ func (bc *BlockChain) reorg(oldBlock, newBlock *types.Block) error {
 	}
 	// Ensure the user sees large reorgs
 	if len(oldChain) > 0 && len(newChain) > 0 {
-		logFn := log.Debug
-		if len(oldChain) > 63 {
-			logFn = log.Warn
-		}
-		logFn("Chain split detected", "number", commonBlock.Number(), "hash", commonBlock.Hash(),
-			"drop", len(oldChain), "dropfrom", oldChain[0].Hash(), "add", len(newChain), "addfrom", newChain[0].Hash())
+		//logFn := log.Debug
+		//if len(oldChain) > 63 {
+		//	logFn = log.Warn
+		//}
+		log.WithFields(log.Fields{
+			"number":   commonBlock.NumberU64(),
+			"hash":     commonBlock.Hash().String(),
+			"drop":     len(oldChain),
+			"dropfrom": oldChain[0].Hash().String(),
+			"add":      len(newChain),
+			"addfrom":  newChain[0].Hash().String(),
+		}).Debug("Chain split detected")
 	} else {
-		log.Error("Impossible reorg, please file an issue", "oldnum", oldBlock.Number(), "oldhash", oldBlock.Hash(), "newnum", newBlock.Number(), "newhash", newBlock.Hash())
+		log.WithFields(log.Fields{
+			"oldnum":  oldBlock.NumberU64(),
+			"oldhash": oldBlock.Hash().String(),
+			"newnum":  newBlock.NumberU64(),
+			"newhash": newBlock.Hash().String(),
+		}).Error("Impossible reorg, please file an issue")
 	}
 	// Insert the new chain, taking care of the proper incremental order
 	var addedTxs types.Transactions
 	for i := len(newChain) - 1; i >= 0; i-- {
 		// insert the block in the canonical way, re-writing history
-		fmt.Println("!!!!!!!prepare insert Canonical chain!")
+		log.Info("!!!!!!!prepare insert Canonical chain!")
 		bc.insert(newChain[i])
 		// write lookup entries for hash based transaction/receipt searches
 		rawdb.WriteTxLookupEntries(bc.db, newChain[i])
@@ -679,7 +701,6 @@ func (bc *BlockChain) PostChainEvents(events []interface{}, logs []*types.Log) {
 			bc.chainHeadFeed.Send(ev)
 
 		case NewMinedBlockEvent:
-			log.Info("*******send newMinedBlockFeed")
 			bc.newMinedBlockFeed.Send(ev)
 
 		}
@@ -747,7 +768,6 @@ func (bc *BlockChain) PostNewBlockEvent(block *types.Block) {
 }
 
 func (bc *BlockChain) InsertChain(chain types.Blocks) (int, error) {
-	log.Info("*******Enter into InsertChain")
 	n, events, logs, err := bc.insertChain(chain)
 	bc.PostChainEvents(events, logs)
 	return n, err
@@ -757,13 +777,18 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 	if len(chain) == 0 {
 		return 0, nil, nil, nil
 	}
-	log.Info("*******Enter into insertChain")
+
 	// Do a sanity check that the provided chain is actually ordered and linked
 	for i := 1; i < len(chain); i++ {
 		if chain[i].NumberU64() != chain[i-1].NumberU64()+1 || chain[i].ParentHash() != chain[i-1].Hash() {
 			// Chain broke ancestry, log a message (programming error) and skip insertion
-			log.Error("Non contiguous block insert", "number", chain[i].Number(), "hash", chain[i].Hash(),
-				"parent", chain[i].ParentHash(), "prevnumber", chain[i-1].Number(), "prevhash", chain[i-1].Hash())
+			log.WithFields(log.Fields{
+				"number":     chain[i].NumberU64(),
+				"hash":       chain[i].Hash().String(),
+				"parent":     chain[i].ParentHash().String(),
+				"prevnumber": chain[i-1].NumberU64(),
+				"prevhash":   chain[i-1].Hash().String(),
+			}).Error("Non contiguous block insert")
 
 			return 0, nil, nil, fmt.Errorf("non contiguous insert: item %d is #%d [%x…], item %d is #%d [%x…] (parent [%x…])", i-1, chain[i-1].NumberU64(),
 				chain[i-1].Hash().Bytes()[:4], i, chain[i].NumberU64(), chain[i].Hash().Bytes()[:4], chain[i].ParentHash().Bytes()[:4])
@@ -774,8 +799,13 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 	for i := 1; i < len(chain); i++ {
 		if chain[i].NumberU64() != chain[i-1].NumberU64()+1 || chain[i].ParentHash() != chain[i-1].Hash() {
 			// Chain broke ancestry, log a message (programming error) and skip insertion
-			log.Error("Non contiguous block insert", "number", chain[i].Number(), "hash", chain[i].Hash(),
-				"parent", chain[i].ParentHash(), "prevnumber", chain[i-1].Number(), "prevhash", chain[i-1].Hash())
+			log.WithFields(log.Fields{
+				"number":     chain[i].NumberU64(),
+				"hash":       chain[i].Hash().String(),
+				"parent":     chain[i].ParentHash().String(),
+				"prevnumber": chain[i-1].NumberU64(),
+				"prevhash":   chain[i-1].Hash().String(),
+			}).Error("Non contiguous block insert")
 
 			return 0, nil, nil, fmt.Errorf("non contiguous insert: item %d is #%d [%x…], item %d is #%d [%x…] (parent [%x…])", i-1, chain[i-1].NumberU64(),
 				chain[i-1].Hash().Bytes()[:4], i, chain[i].NumberU64(), chain[i].Hash().Bytes()[:4], chain[i].ParentHash().Bytes()[:4])
@@ -799,7 +829,6 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 	)
 
 	for i, block := range chain {
-		log.Info("enter block: %s", block.String())
 
 		//TODO: optimization parallel verify header???
 		err := bc.engine.VerifyHeader(bc, block.Header())

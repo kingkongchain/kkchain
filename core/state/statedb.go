@@ -593,6 +593,6 @@ func (s *StateDB) Commit(deleteEmptyObjects bool) (root common.Hash, err error) 
 		}
 		return nil
 	})
-	log.Debug("trie cache stats after commit,missses: %d,unloads: %d", trie.CacheMisses(), trie.CacheUnloads())
+	log.Debugf("trie cache stats after commit,missses: %d,unloads: %d", trie.CacheMisses(), trie.CacheUnloads())
 	return root, err
 }

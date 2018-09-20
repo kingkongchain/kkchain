@@ -142,7 +142,10 @@ func (c *Chain) Connected(conn p2p.Conn) {
 	peer := NewPeer(conn)
 	c.peers.Register(peer)
 
-	log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
+	log.WithFields(logrus.Fields{
+		"remote_address": conn.RemotePeer().Address,
+		"remote_id":      hex.EncodeToString(conn.RemotePeer().PublicKey),
+	}).Info("a conn is notified")
 	currentBlock := c.blockchain.CurrentBlock()
 	if currentBlock == nil {
 		log.Warning("local chain current block is nil")
@@ -184,12 +187,15 @@ func (c *Chain) RemovePeer(id string) {
 	if peer == nil {
 		return
 	}
-	log.Debug("Removing KKChain peer", "peer", id)
+	log.Debugf("Removing KKChain peer,id: %v", id)
 
 	// Unregister the peer from the downloader and Ethereum peer set
 	// pm.downloader.UnregisterPeer(id)
 	if err := c.peers.Unregister(id); err != nil {
-		log.Error("Peer removal failed", "peer", id, "err", err)
+		log.WithFields(logrus.Fields{
+			"peer": id,
+			"err":  err,
+		}).Error("Peer removal failed")
 	}
 	// Hard disconnect at the networking layer
 	// if peer != nil {
@@ -207,7 +213,6 @@ func (c *Chain) Start(maxPeers int) {
 
 	// broadcast mined blocks
 	c.mineBlockSub = c.blockchain.SubscribeNewMinedBlockEvent(c.newMinedBlockCh)
-	log.Info("****SubscribeNewMinedBlockEvent ")
 	go c.minedBroadcastLoop()
 
 	// start sync handlers
@@ -216,23 +221,18 @@ func (c *Chain) Start(maxPeers int) {
 }
 
 func (c *Chain) Stop() {
-	log.Info("Stopping KKChain ")
-
 	c.syncer.Stop()
 	//pm.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	c.mineBlockSub.Unsubscribe() // quits blockBroadcastLoop
 	c.peers.Close()
-
-	log.Info("KKChain stopped")
 }
 
 // Mined broadcast loop
 func (c *Chain) minedBroadcastLoop() {
 	for {
-		log.Info("*******Enter into minedBroadcastLoop")
 		select {
 		case newMinedBlockCh := <-c.newMinedBlockCh:
-			log.Info("*******receive newMinedBlockEvent:blockNum:", newMinedBlockCh.Block.NumberU64(), ",prepare execute BroadcastBlock")
+			log.Infof("receive newMinedBlockEvent:block %d prepare execute BroadcastBlock", newMinedBlockCh.Block.NumberU64())
 
 			// fill up td
 			block := newMinedBlockCh.Block
@@ -249,7 +249,6 @@ func (c *Chain) minedBroadcastLoop() {
 
 // will only announce it's availability (depending what's requested).
 func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
-	log.Info("*******Enter into BroadcastBlock")
 	hash := block.Hash()
 	peers := c.peers.PeersWithoutBlock(hash)
 
@@ -268,7 +267,10 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 		for _, peer := range transfer {
 			peer.SendNewBlock(block)
 		}
-		log.Info("*****Send block Suceess.Propagated block", "hash", hash, "recipients", len(transfer))
+		log.WithFields(logrus.Fields{
+			"hash":        hash.String(),
+			"block_count": len(transfer),
+		}).Info("Send block Suceess.Propagated block")
 		return
 	}
 	// Otherwise if the block is indeed in out own chain, announce it
@@ -276,7 +278,10 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 		for _, peer := range peers {
 			peer.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()})
 		}
-		log.Info("*****Send block Suceess.Announced block", "hash", hash, "recipients", len(peers))
+		log.WithFields(logrus.Fields{
+			"hash":       hash.String(),
+			"peer_count": len(peers),
+		}).Info("Send block Suceess.Announced block")
 	}
 }
 

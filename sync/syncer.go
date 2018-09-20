@@ -1,16 +1,16 @@
 package sync
 
 import (
+	"errors"
 	"sync/atomic"
 	"time"
-	"errors"
 
+	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/types"
-	"github.com/invin/kkchain/sync/fetcher"
 	"github.com/invin/kkchain/sync/downloader"
+	"github.com/invin/kkchain/sync/fetcher"
 	"github.com/invin/kkchain/sync/peer"
-	"github.com/invin/kkchain/common"
 	"github.com/jbenet/goprocess"
 	log "github.com/sirupsen/logrus"
 )
@@ -26,27 +26,27 @@ const (
 )
 
 var (
-	errBusy                    = errors.New("busy")
+	errBusy = errors.New("busy")
 )
 
 // Syncer represents syncer for blockchain.
 // It includes both fetching and downloading
 type Syncer struct {
-	status     int32
-	proc       goprocess.Process
-	ctrl       *core.Controller
+	status int32
+	proc   goprocess.Process
+	ctrl   *core.Controller
 	// chain      *Chain
-	buddy	   SyncBuddy
+	buddy      SyncBuddy
 	blockchain *core.BlockChain
 	downloader *downloader.Downloader
 	fetcher    *fetcher.Fetcher
 }
 
-// SyncBuddy defines interface for cooperating with synchronization 
+// SyncBuddy defines interface for cooperating with synchronization
 type SyncBuddy interface {
 	Peers() peer.PeerSet
 	// InsertBlocks(blocks types.Blocks) (int, error)
-	BroadcastBlock(block *types.Block, propagate bool)	
+	BroadcastBlock(block *types.Block, propagate bool)
 	AcceptTxs()
 	RemovePeer(id string)
 }
@@ -65,7 +65,7 @@ func New(buddy SyncBuddy, bc *core.BlockChain) *Syncer {
 	}
 	return &Syncer{
 		status:     Stopped,
-		buddy:		buddy,
+		buddy:      buddy,
 		blockchain: bc,
 		downloader: downloader.New(bc, buddy.Peers()),
 		fetcher:    fetcher.New(bc.GetBlockByHash, validator, buddy.BroadcastBlock, heighter, inserter, buddy.RemovePeer),
@@ -80,7 +80,6 @@ func (s *Syncer) Start() error {
 	}
 	// Create goprocess with tear down
 	s.proc = goprocess.WithTeardown(func() error {
-		log.Info("Shutting down sync")
 		return nil
 	})
 
@@ -95,7 +94,6 @@ func (s *Syncer) Start() error {
 		for {
 			select {
 			case <-p.Closing():
-				log.Info("Exiting loop ...")
 				return
 			case <-forceSync.C:
 				// Force a sync even if not enough peers are present
@@ -118,7 +116,7 @@ func (s *Syncer) Synchronise(p peer.Peer) {
 		return
 	}
 
-	log.Info("start synchonise with ", p.ID())
+	log.Infof("start synchonise with %v", p.ID())
 	// Make sure the peer's TD is higher than our own
 	currentBlock := s.blockchain.CurrentBlock()
 	td := s.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())
@@ -130,7 +128,7 @@ func (s *Syncer) Synchronise(p peer.Peer) {
 
 	// Run the sync cycle, and disable fast sync if we've went past the pivot block
 	if err := s.downloader.Synchronise(p.ID(), pHead, pTd, downloader.FullSync); err != nil {
-		log.Error("Failed to sync,error: ", err)
+		log.Errorf("Failed to sync,error: %v", err)
 		return
 	}
 
@@ -193,4 +191,3 @@ func (s *Syncer) DeliverBlocks(id string, blocks []*types.Block) (err error) {
 func (s *Syncer) Notify(peer string, hash common.Hash, number uint64, time time.Time, blockFetcher func([]common.Hash) error) error {
 	return s.fetcher.Notify(peer, hash, number, time, blockFetcher)
 }
-

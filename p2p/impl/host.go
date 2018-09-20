@@ -4,6 +4,8 @@ import (
 	"net"
 	"sync"
 
+	"encoding/hex"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/dht"
@@ -116,7 +118,7 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 			return
 		}
 
-		log.Infof("Loop to handle messages,remote ID: %s", pid)
+		log.Infof("Loop to handle messages,remote ID: %s", hex.EncodeToString(pid.PublicKey))
 		// handle other messages
 		for {
 			msg, protocol, err := c.ReadMessage()
@@ -135,8 +137,6 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 		}
 
 		h.RemoveConnection(pid)
-
-		log.Debug("break loop for connection")
 	}()
 }
 

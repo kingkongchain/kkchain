@@ -1,5 +1,4 @@
-
-package fetcher 
+package fetcher
 
 import (
 	"errors"
@@ -11,8 +10,8 @@ import (
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/sync/peer"
 
-	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 	log "github.com/sirupsen/logrus"
+	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 )
 
 const (
@@ -120,7 +119,7 @@ type Fetcher struct {
 	broadcastBlock blockBroadcasterFn // Broadcasts a block to connected peers
 	chainHeight    chainHeightFn      // Retrieves the current chain's height
 	insertChain    chainInsertFn      // Injects a batch of blocks into the chain
-	dropPeer       peer.PeerDropFn         // Drops a peer for misbehaving
+	dropPeer       peer.PeerDropFn    // Drops a peer for misbehaving
 
 }
 
@@ -225,7 +224,10 @@ func (f *Fetcher) Enqueue(peer string, block *types.Block) error {
 // FilterBodies extracts all the block bodies that were explicitly requested by
 // the fetcher, returning those that should be handled differently.
 func (f *Fetcher) FilterBlock(peer string, blocks []*types.Block, time time.Time) []*types.Block {
-	log.Debug("Filtering blocks", "peer", peer, "txs", len(blocks))
+	log.WithFields(log.Fields{
+		"peer": peer,
+		"txs":  len(blocks),
+	}).Debug("Filtering blocks")
 
 	// Send the filter channel to the fetcher
 	filter := make(chan *blockFilterTask)
@@ -293,13 +295,21 @@ func (f *Fetcher) loop() {
 
 			count := f.announces[notification.origin] + 1
 			if count > hashLimit {
-				log.Debug("Peer exceeded outstanding announces", "peer", notification.origin, "limit", hashLimit)
+				log.WithFields(log.Fields{
+					"peer":  notification.origin,
+					"limit": hashLimit,
+				}).Debug("Peer exceeded outstanding announces")
 				break
 			}
 			// If we have a valid block number, check that it's potentially useful
 			if notification.number > 0 {
 				if dist := int64(notification.number) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
-					log.Debug("Peer discarded announcement", "peer", notification.origin, "number", notification.number, "hash", notification.hash, "distance", dist)
+					log.WithFields(log.Fields{
+						"peer":     notification.origin,
+						"number":   notification.number,
+						"hash":     notification.hash.String(),
+						"distance": dist,
+					}).Debug("Peer discarded announcement")
 					break
 				}
 			}
@@ -342,7 +352,10 @@ func (f *Fetcher) loop() {
 			}
 			// Send out all block body requests
 			for peer, hashes := range request {
-				log.Debug("Fetching scheduled bodies", "peer", peer, "list", hashes)
+				log.WithFields(log.Fields{
+					"peer": peer,
+					"list": hashes,
+				}).Debug("Fetching scheduled bodies")
 				go f.completing[hashes[0]].fetchBlocks(hashes)
 			}
 			// Schedule the next fetch if blocks are still pending
@@ -440,13 +453,23 @@ func (f *Fetcher) enqueue(peer string, block *types.Block) {
 	// Ensure the peer isn't DOSing us
 	count := f.queues[peer] + 1
 	if count > blockLimit {
-		log.Debug("Discarded propagated block, exceeded allowance", "peer", peer, "number", block.Number(), "hash", hash, "limit", blockLimit)
+		log.WithFields(log.Fields{
+			"peer":   peer,
+			"number": block.NumberU64(),
+			"hash":   hash.String(),
+			"limit":  blockLimit,
+		}).Debug("Discarded propagated block, exceeded allowance")
 		f.forgetHash(hash)
 		return
 	}
 	// Discard any past or too distant blocks
 	if dist := int64(block.NumberU64()) - int64(f.chainHeight()); dist < -maxUncleDist || dist > maxQueueDist {
-		log.Debug("Discarded propagated block, too far away", "peer", peer, "number", block.Number(), "hash", hash, "distance", dist)
+		log.WithFields(log.Fields{
+			"peer":     peer,
+			"number":   block.NumberU64(),
+			"hash":     hash.String(),
+			"distance": dist,
+		}).Debug("Discarded propagated block, too far away")
 		f.forgetHash(hash)
 		return
 	}
@@ -459,7 +482,12 @@ func (f *Fetcher) enqueue(peer string, block *types.Block) {
 		f.queues[peer] = count
 		f.queued[hash] = op
 		f.queue.Push(op, -float32(block.NumberU64()))
-		log.Debug("Queued propagated block", "peer", peer, "number", block.Number(), "hash", hash, "queued", f.queue.Size())
+		log.WithFields(log.Fields{
+			"peer":   peer,
+			"number": block.NumberU64(),
+			"hash":   hash.String(),
+			"queued": f.queue.Size(),
+		}).Debug("Queued propagated block")
 	}
 }
 
@@ -470,14 +498,23 @@ func (f *Fetcher) insert(peer string, block *types.Block) {
 	hash := block.Hash()
 
 	// Run the import on a new thread
-	log.Debug("Importing propagated block", "peer", peer, "number", block.Number(), "hash", hash)
+	log.WithFields(log.Fields{
+		"peer":   peer,
+		"number": block.NumberU64(),
+		"hash":   hash.String(),
+	}).Debug("Importing propagated block")
 	go func() {
 		defer func() { f.done <- hash }()
 
 		// If the parent's unknown, abort insertion
 		parent := f.getBlock(block.ParentHash())
 		if parent == nil {
-			log.Debug("Unknown parent of propagated block", "peer", peer, "number", block.Number(), "hash", hash, "parent", block.ParentHash())
+			log.WithFields(log.Fields{
+				"peer":   peer,
+				"number": block.NumberU64(),
+				"hash":   hash.String(),
+				"parent": block.ParentHash().String(),
+			}).Debug("Unknown parent of propagated block")
 			return
 		}
 		// Quickly validate the header and propagate the block if it passes
@@ -491,13 +528,23 @@ func (f *Fetcher) insert(peer string, block *types.Block) {
 
 		default:
 			// Something went very wrong, drop the peer
-			log.Debug("Propagated block verification failed", "peer", peer, "number", block.Number(), "hash", hash, "err", err)
+			log.WithFields(log.Fields{
+				"peer":   peer,
+				"number": block.NumberU64(),
+				"hash":   hash.String(),
+				"err":    err,
+			}).Debug("Propagated block verification failed")
 			f.dropPeer(peer)
 			return
 		}
 		// Run the actual import and log any issues
 		if _, err := f.insertChain(types.Blocks{block}); err != nil {
-			log.Debug("Propagated block import failed", "peer", peer, "number", block.Number(), "hash", hash, "err", err)
+			log.WithFields(log.Fields{
+				"peer":   peer,
+				"number": block.NumberU64(),
+				"hash":   hash.String(),
+				"err":    err,
+			}).Debug("Propagated block import failed")
 			return
 		}
 		// If import succeeded, broadcast the block
