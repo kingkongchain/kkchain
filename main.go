@@ -80,7 +80,7 @@ func doP2P(bc *core.BlockChain, port, keypath string) {
 		pub, _ := ed25519.New().PrivateToPublic(pri)
 		node := "/ip4/127.0.0.1/tcp/9998"
 		node = hex.EncodeToString(pub) + "@" + node
-		log.Infof("remote peer: %s\n", node)
+		log.Infof("remote peer: %s", node)
 		net.BootstrapNodes = []string{node}
 	}
 

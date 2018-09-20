@@ -129,7 +129,6 @@ func (dht *DHT) doHandleMessage(c p2p.Conn, msg *Message) {
 		return
 	}
 
-	log.Infof("dht handle %d success and send resp to: %s", msg.Type, pid)
 }
 
 func (dht *DHT) Start() {
@@ -194,7 +193,11 @@ func (dht *DHT) RemovePeer(peer PeerID) {
 
 //FindTargetNeighbours searches target's neighbours from given PeerID
 func (dht *DHT) FindTargetNeighbours(target []byte, peer PeerID) {
-	log.Infof("FindTargetNeighbours from %s, target: %s\n", hex.EncodeToString(peer.PublicKey), hex.EncodeToString(target))
+	log.WithFields(log.Fields{
+		"from":   hex.EncodeToString(peer.PublicKey),
+		"target": hex.EncodeToString(target),
+	}).Infof("want to find a peer")
+
 	if peer.Equals(dht.self) {
 		return
 	}

@@ -116,7 +116,6 @@ func (s *Syncer) Synchronise(p peer.Peer) {
 		return
 	}
 
-	log.Infof("start synchonise with %v", p.ID())
 	// Make sure the peer's TD is higher than our own
 	currentBlock := s.blockchain.CurrentBlock()
 	td := s.blockchain.GetTd(currentBlock.Hash(), currentBlock.NumberU64())

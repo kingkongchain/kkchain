@@ -218,7 +218,6 @@ func (c *Chain) minedBroadcastLoop() {
 	for {
 		select {
 		case newMinedBlockCh := <-c.newMinedBlockCh:
-			log.Infof("receive newMinedBlockEvent:block %d prepare execute BroadcastBlock", newMinedBlockCh.Block.NumberU64())
 
 			// fill up td
 			block := newMinedBlockCh.Block
@@ -253,10 +252,6 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 		for _, peer := range transfer {
 			peer.SendNewBlock(block)
 		}
-		log.WithFields(logrus.Fields{
-			"hash":        hash.String(),
-			"block_count": len(transfer),
-		}).Info("Send block Suceess.Propagated block")
 		return
 	}
 	// Otherwise if the block is indeed in out own chain, announce it
@@ -264,10 +259,6 @@ func (c *Chain) BroadcastBlock(block *types.Block, propagate bool) {
 		for _, peer := range peers {
 			peer.SendNewBlockHashes([]common.Hash{block.Hash()}, []uint64{block.NumberU64()})
 		}
-		log.WithFields(logrus.Fields{
-			"hash":       hash.String(),
-			"peer_count": len(peers),
-		}).Info("Send block Suceess.Announced block")
 	}
 }
 

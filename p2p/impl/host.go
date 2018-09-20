@@ -4,8 +4,6 @@ import (
 	"net"
 	"sync"
 
-	"encoding/hex"
-
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/dht"
@@ -42,12 +40,12 @@ type Host struct {
 // NewHost creates a new host object
 func NewHost(id p2p.ID, n p2p.Network) *Host {
 	return &Host{
-		id:          id,
-		connections: make(map[string]p2p.Conn),
+		id:             id,
+		connections:    make(map[string]p2p.Conn),
 		maxConnections: 32, // TODO: parameterize
-		handlers:    make(map[string]p2p.MessageHandler),
-		notifiees:   make(map[p2p.Notifiee]struct{}),
-		n:           n,
+		handlers:       make(map[string]p2p.MessageHandler),
+		notifiees:      make(map[p2p.Notifiee]struct{}),
+		n:              n,
 	}
 }
 
@@ -105,7 +103,6 @@ func (h *Host) notifyAll(notification func(n p2p.Notifiee)) {
 
 // OnConnectionCreated is called when new connection is available
 func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
-	log.Infof("A connection is created,direction: %s", dir)
 	// Loop to handle messages
 	go func() {
 		defer c.Close()
@@ -122,7 +119,6 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 			return
 		}
 
-		log.Infof("Loop to handle messages,remote ID: %s", hex.EncodeToString(pid.PublicKey))
 		// handle other messages
 		for {
 			msg, protocol, err := c.ReadMessage()

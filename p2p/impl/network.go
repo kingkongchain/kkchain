@@ -164,7 +164,6 @@ func (n *Network) startListening() error {
 	// Run listenr process
 	n.proc.Go(func(p goprocess.Process) {
 		// TODO: add addr info
-		log.Info("Loop for incoming connections")
 		for {
 			if conn, err := listener.Accept(); err == nil {
 				c := NewConnection(conn, n, n.host)
