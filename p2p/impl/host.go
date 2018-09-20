@@ -20,6 +20,9 @@ type Host struct {
 	// connection map
 	connections map[string]p2p.Conn
 
+	// max connections allowed
+	maxConnections int
+
 	// message handler map
 	handlers map[string]p2p.MessageHandler
 
@@ -41,6 +44,7 @@ func NewHost(id p2p.ID, n p2p.Network) *Host {
 	return &Host{
 		id:          id,
 		connections: make(map[string]p2p.Conn),
+		maxConnections: 32, // TODO: parameterize
 		handlers:    make(map[string]p2p.MessageHandler),
 		notifiees:   make(map[p2p.Notifiee]struct{}),
 		n:           n,
@@ -158,6 +162,11 @@ func (h *Host) dispatchMessage(conn p2p.Conn, msg proto.Message, protocol string
 func (h *Host) AddConnection(id p2p.ID, conn p2p.Conn) error {
 	h.mux.Lock()
 	defer h.mux.Unlock()
+
+	// Check if there are too many connections
+	if len(h.connections) >= h.maxConnections {
+		return errConnectionExceedMax
+	}
 
 	publicKey := string(id.PublicKey)
 	_, found := h.connections[publicKey]

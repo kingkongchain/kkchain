@@ -78,20 +78,6 @@ func (c *Chain) GetBlockChain() *core.BlockChain {
 
 // handleMessage handles messages within the stream
 func (c *Chain) handleMessage(conn p2p.Conn, msg proto.Message) {
-	// Ignore maxPeers if this is a trusted peer
-	if c.peers.Len() >= c.maxPeers {
-		return
-	}
-	// Register the peer locally
-	//c.Connected(conn)
-	peer := NewPeer(conn)
-	if c.peers.peers[peer.ID] == nil {
-		c.peers.Register(peer)
-		log.Infof("a conn is notified,remote ID: %s", conn.RemotePeer())
-	}
-
-	//defer c.removePeer(p.id)
-
 	// check message type
 	switch message := msg.(type) {
 	case *Message:

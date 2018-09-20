@@ -10,6 +10,7 @@ var (
 	errDuplicateConnection = errors.New("duplicated connection")
 	errDuplicateStream     = errors.New("duplicated stream")
 	errConnectionNotFound  = errors.New("connection not found")
+	errConnectionExceedMax  = errors.New("connection exceeds max value")
 	errStreamNotFound      = errors.New("stream not found")
 	errDuplicateNotifiee   = errors.New("duplicated notifiee")
 	errNotifieeNotFound    = errors.New("notifiee not found")
