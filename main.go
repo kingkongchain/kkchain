@@ -27,11 +27,12 @@ func main() {
 	keypath := flag.String("k", "", "")
 	mineFlag := flag.String("m", "", "")
 	fakeFlag := flag.String("f", "fakeMineFlag", "true is fake mine")
+	dataStoreDir := flag.String("d", "dataStoreDir", "A directory that stores block data")
 	flag.Parse()
 
-	config := &core.Config{DataDir: ""}
+	config := &core.Config{DataDir: "data"}
 
-	chainDb, _ := core.OpenDatabase(config, "chaindata")
+	chainDb, _ := core.OpenDatabase(config, *dataStoreDir)
 
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlock(chainDb, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
+	"os"
 	"path/filepath"
 	"sync"
 	"sync/atomic"
@@ -324,8 +325,26 @@ func resolvePath(path string) string {
 	if filepath.IsAbs(path) {
 		return path
 	}
+	joinPath := filepath.Join("./data", path)
+	if flag, _ := PathExists(joinPath); !flag {
+		err := os.MkdirAll(joinPath, 0766)
+		if err != nil {
+			log.Errorf("Create directory error: %v", err)
+		}
+	}
 
-	return filepath.Join("./geth", path)
+	return joinPath
+}
+
+func PathExists(path string) (bool, error) {
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if os.IsNotExist(err) {
+		return false, nil
+	}
+	return false, err
 }
 
 //END TODO
