@@ -175,7 +175,7 @@ func (c *Chain) RemovePeer(id string) {
 	}
 	log.Debugf("Removing KKChain peer,id: %v", id)
 
-	// Unregister the peer from the downloader and Ethereum peer set
+	// Unregister the peer from the downloader and peer set
 	// pm.downloader.UnregisterPeer(id)
 	if err := c.peers.Unregister(id); err != nil {
 		log.WithFields(logrus.Fields{

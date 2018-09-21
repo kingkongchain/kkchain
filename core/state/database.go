@@ -1,14 +1,13 @@
 package state
 
-
 import (
 	"fmt"
 	"sync"
 
+	lru "github.com/hashicorp/golang-lru"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/storage"
 	"github.com/invin/kkchain/trie"
-	lru "github.com/hashicorp/golang-lru"
 )
 
 // Trie cache generation limit after which to evict trie nodes from memory.
@@ -44,7 +43,7 @@ type Database interface {
 	TrieDB() *trie.Database
 }
 
-// Trie is a Ethereum Merkle Trie.
+// Trie is a Merkle Trie.
 type Trie interface {
 	TryGet(key []byte) ([]byte, error)
 	TryUpdate(key, value []byte) error
@@ -161,4 +160,3 @@ func (m cachedTrie) Commit(onleaf trie.LeafCallback) (common.Hash, error) {
 func (m cachedTrie) Prove(key []byte, fromLevel uint, proofDb storage.Putter) error {
 	return m.SecureTrie.Prove(key, fromLevel, proofDb)
 }
-
