@@ -8,6 +8,7 @@ import (
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/storage"
 	"github.com/invin/kkchain/rlp"
+	log "github.com/sirupsen/logrus"
 )
 
 // Prove constructs a merkle proof for key. The result contains all encoded nodes

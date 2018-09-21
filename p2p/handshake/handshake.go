@@ -5,9 +5,11 @@ import (
 	"errors"
 	"time"
 
+	"encoding/hex"
+
 	"github.com/gogo/protobuf/proto"
 	"github.com/invin/kkchain/p2p"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -19,10 +21,6 @@ var (
 	errProtocol    = errors.New("wrong protocol")
 	errHandshake   = errors.New("failed to handshake")
 	errReadTimeout = errors.New("read message timeout")
-)
-
-var (
-	log = logging.MustGetLogger("p2p/handshake")
 )
 
 // Handshake implements protocol for handshaking
@@ -128,7 +126,6 @@ func (hs *Handshake) doHandleMessage(c p2p.Conn, msg *Message) {
 
 	// if nil response, return it before serializing
 	if rpmes == nil {
-		log.Warning("got back nil response from request")
 		return
 	}
 
@@ -148,11 +145,11 @@ func (hs *Handshake) doHandleMessage(c p2p.Conn, msg *Message) {
 
 // Connected is called when new connection is established
 func (hs *Handshake) Connected(c p2p.Conn) {
-	log.Infof("A new connection is created,remote ID: %s", c.RemotePeer())
+	log.Infof("A new connection is created,remote ID: %s", hex.EncodeToString(c.RemotePeer().PublicKey))
 
 }
 
 // Disconnected is called when the connection is closed
 func (hs *Handshake) Disconnected(c p2p.Conn) {
-	log.Infof("A peer is disconnected,remote ID: %s", c.RemotePeer())
+	log.Infof("A peer is disconnected,remote ID: %s", hex.EncodeToString(c.RemotePeer().PublicKey))
 }

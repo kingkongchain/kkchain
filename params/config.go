@@ -1,4 +1,3 @@
-
 package params
 
 import (
@@ -18,31 +17,25 @@ var (
 var (
 	// MainnetChainConfig is the chain parameters to run a node on the main network.
 	MainnetChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(1),
-		Ethash:              new(EthashConfig),
+		ChainID: big.NewInt(1),
+		Ethash:  new(EthashConfig),
 	}
 
 	// TestnetChainConfig contains the chain parameters to run a node on the Ropsten test network.
 	TestnetChainConfig = &ChainConfig{
-		ChainID:             big.NewInt(3),
-		Ethash:              new(EthashConfig),
+		ChainID: big.NewInt(3),
+		Ethash:  new(EthashConfig),
 	}
 
-	// AllEthashProtocolChanges contains every protocol change (EIPs) introduced
-	// and accepted by the Ethereum core developers into the Ethash consensus.
-	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
 	AllEthashProtocolChanges = &ChainConfig{big.NewInt(1337), new(EthashConfig), nil}
 
-	// AllCliqueProtocolChanges contains every protocol change (EIPs) introduced
-	// and accepted by the Ethereum core developers into the Clique consensus.
-	//
 	// This configuration is intentionally not using keyed fields to force anyone
 	// adding flags to the config to also have to set these fields.
 	AllCliqueProtocolChanges = &ChainConfig{big.NewInt(1337), nil, &CliqueConfig{Period: 0, Epoch: 30000}}
 
-	// TestChainConfig = &ChainConfig{big.NewInt(1), new(EthashConfig), nil}
+	TestChainConfig = &ChainConfig{big.NewInt(1), new(EthashConfig), nil}
 	// TestRules       = TestChainConfig.Rules(new(big.Int))
 )
 

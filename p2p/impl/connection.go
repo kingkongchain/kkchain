@@ -3,7 +3,6 @@ package impl
 import (
 	"bufio"
 	"encoding/binary"
-	"encoding/json"
 	"io"
 	"net"
 	"sync"
@@ -14,6 +13,7 @@ import (
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/protobuf"
 	"github.com/pkg/errors"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -82,9 +82,6 @@ func (c *Connection) WriteMessage(message proto.Message, protocol string) error 
 	// TODO: use integer
 	// set protocol
 	signed.Protocol = protocol
-
-	log.Info("Send message")
-
 	return c.write(c.conn, signed, &c.mux)
 }
 
@@ -150,7 +147,7 @@ func (c *Connection) write(w io.Writer, message *protobuf.Message, writerMutex *
 	for totalBytesWritten < len(buffer) && err == nil {
 		bytesWritten, err = w.Write(buffer[totalBytesWritten:])
 		if err != nil {
-			log.Errorf("stream: failed to write entire buffer, err: %+v\n", err)
+			log.Errorf("stream: failed to write entire buffer, err: %v", err)
 		}
 		totalBytesWritten += bytesWritten
 	}
@@ -234,25 +231,28 @@ func (c *Connection) parseMessage(msg *protobuf.Message) (proto.Message, string,
 	// unmarshal message
 	var ptr types.DynamicAny
 	if err := types.UnmarshalAny(msg.Message, &ptr); err != nil {
-		log.Errorf("failed to unmarshal protobuf msg: %v", err)
+		log.Errorf("failed to unmarshal protobuf msg,error: %v", err)
 		return nil, "", err
 	}
-
-	log.Info("Received a message")
-
 	return ptr.Message, msg.Protocol, nil
 }
 
 // TODO:
 // only use for chain request
-func (c *Connection) SendChainMsg(msgType int32, data interface{}) error {
-	cbytes, err := json.Marshal(data)
-	if err != nil {
-		return err
+func (c *Connection) SendChainMsg(msgType int32, msgData interface{}) error {
+	switch msgData.(type) {
+	case []byte:
+		newMsg := &chain.DataMsg{
+			Data: msgData.([]byte),
+		}
+		msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
+		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+	case *chain.GetBlockHeadersMsg:
+		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(*chain.GetBlockHeadersMsg))
+		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+	case *chain.GetBlocksMsg:
+		msg := chain.NewMessage(chain.Message_Type(msgType), msgData.(*chain.GetBlocksMsg))
+		return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
 	}
-	newMsg := &chain.DataMsg{
-		Data: [][]byte{cbytes},
-	}
-	msg := chain.NewMessage(chain.Message_Type(msgType), newMsg)
-	return c.WriteMessage(msg, "/kkchain/p2p/chain/1.0.0")
+	return nil
 }

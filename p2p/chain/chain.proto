@@ -36,13 +36,19 @@ message ChainStatusMsg {
 
 message GetBlockHeadersMsg {
    uint64 startNum = 1;
-   uint64 endNum = 2;
-   repeated uint64 skipNum = 3;
-   bool direction = 4;
+   bytes startHash = 2; // optional
+   uint64 amount = 3;
+   uint64 skip = 4;
+   bool reverse = 5;
+}
+
+message GetBlocksMsg {
+   uint64 startNum = 1;
+   uint64 amount = 2;
 }
 
 message DataMsg {
-   repeated bytes data = 1;
+   bytes data = 1;
 }
 
 message Message {
@@ -57,6 +63,8 @@ message Message {
         RECEIPTS = 7;
         NEW_BLOCK_HASHS = 8;
         NEW_BLOCK = 9;
+        GET_BLOCKS = 10;
+        BLOCKS = 11;
     }
 
     // defines what type of message it is.
@@ -66,6 +74,7 @@ message Message {
     ChainStatusMsg chainStatusMsg = 2;
     GetBlockHeadersMsg getBlockHeadersMsg = 3;
     DataMsg dataMsg = 4;
+    GetBlocksMsg getBlocksMsg = 5;
 }
 
 

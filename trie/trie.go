@@ -7,7 +7,7 @@ import (
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/crypto"
-	"github.com/op/go-logging"
+	log "github.com/sirupsen/logrus"
 	// "github.com/invin/kkchain/metrics"
 )
 
@@ -17,9 +17,6 @@ var (
 
 	// emptyState is the known hash of an empty state trie entry.
 	emptyState = crypto.Keccak256Hash(nil)
-
-	// log is for common logging operations
-	log = logging.MustGetLogger("trie")
 )
 
 var (

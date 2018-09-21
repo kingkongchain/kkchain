@@ -1,29 +1,27 @@
 package rocksdb
 
 import (
-	"fmt"
 	"errors"
 
-	"github.com/invin/kkchain/storage"
-	"github.com/invin/kkchain/common"
 	rdb "github.com/invin/gorocksdb"
-
+	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/storage"
 )
 
 var (
-	errOpenDatabase			= errors.New("failed to open rocksdb database")
-	errKeyNotFound			= errors.New("failed to find the key")
+	errOpenDatabase = errors.New("failed to open rocksdb database")
+	errKeyNotFound  = errors.New("failed to find the key")
 )
 
 // RDBDatabase wraps read/write operations with rocksdb
 type RDBDatabase struct {
-	dir string // directory of database
-	db *rdb.DB
-	readOptions *rdb.ReadOptions
+	dir          string // directory of database
+	db           *rdb.DB
+	readOptions  *rdb.ReadOptions
 	writeOptions *rdb.WriteOptions
 }
 
-// New creates a RDBDatabase  
+// New creates a RDBDatabase
 func New(dir string, applyOpts func(opts *rdb.Options)) (*RDBDatabase, error) {
 	// Create default options
 	opts := rdb.NewDefaultOptions()
@@ -39,15 +37,15 @@ func New(dir string, applyOpts func(opts *rdb.Options)) (*RDBDatabase, error) {
 
 	// Open database
 	db, err := rdb.OpenDb(opts, dir)
-	
+
 	if err != nil {
 		return nil, errOpenDatabase
 	}
 
 	return &RDBDatabase{
-		dir: dir, 
-		db: db,
-		readOptions: rdb.NewDefaultReadOptions(),
+		dir:          dir,
+		db:           db,
+		readOptions:  rdb.NewDefaultReadOptions(),
 		writeOptions: rdb.NewDefaultWriteOptions()}, nil
 }
 
@@ -58,7 +56,7 @@ func (r *RDBDatabase) Path() string {
 
 // Put writes a key-value pair to the database
 func (r *RDBDatabase) Put(key []byte, value []byte) error {
-	fmt.Println("ROCKSDB WRITE: ", key, value)
+	//fmt.Println("ROCKSDB WRITE: ", key, value)
 	return r.db.Put(r.writeOptions, key, value)
 }
 
@@ -77,11 +75,11 @@ func (r *RDBDatabase) Get(key []byte) ([]byte, error) {
 	// TODO: optimize
 	defer val.Free()
 
-	fmt.Println("ROCKSDB GET: ", val.Data())
+	//fmt.Println("ROCKSDB GET: ", val.Data())
 	if val.Nil() {
 		return nil, errKeyNotFound
 	}
-	
+
 	return common.CopyBytes(val.Data()), nil
 }
 
@@ -111,9 +109,9 @@ func (r *RDBDatabase) NewBatch() storage.Batch {
 }
 
 type rdbBatch struct {
-	db *rdb.DB
+	db           *rdb.DB
 	writeOptions *rdb.WriteOptions
-	writeBatch *rdb.WriteBatch
+	writeBatch   *rdb.WriteBatch
 }
 
 // Put puts key value pair to for batch list
@@ -126,7 +124,7 @@ func (b *rdbBatch) Put(key, value []byte) error {
 // Delete appends a delete operation to the batch list
 func (b *rdbBatch) Delete(key []byte) error {
 	b.writeBatch.Delete(key)
-	
+
 	return nil
 }
 
@@ -145,8 +143,3 @@ func (b *rdbBatch) ValueSize() int {
 func (b *rdbBatch) Reset() {
 	b.writeBatch.Destroy()
 }
-
-
-
-
-

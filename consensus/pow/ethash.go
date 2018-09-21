@@ -1,19 +1,3 @@
-// Copyright 2017 The go-ethereum Authors
-// This file is part of the go-ethereum library.
-//
-// The go-ethereum library is free software: you can redistribute it and/or modify
-// it under the terms of the GNU Lesser General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-//
-// The go-ethereum library is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU Lesser General Public License for more details.
-//
-// You should have received a copy of the GNU Lesser General Public License
-// along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
-
 // Package ethash implements the ethash proof-of-work consensus engine.
 package pow
 
@@ -164,7 +148,10 @@ func newlru(what string, maxItems int, new func(epoch uint64) interface{}) *lru 
 		maxItems = 1
 	}
 	cache, _ := simplelru.NewLRU(maxItems, func(key, value interface{}) {
-		logger.Debug("Evicted ethash "+what, "epoch", key)
+		logger.WithFields(logger.Fields{
+			"lru_what": what,
+			"epoch":    key,
+		}).Debug("Evicted ethash")
 	})
 	return &lru{what: what, new: new, cache: cache}
 }
@@ -182,14 +169,20 @@ func (lru *lru) get(epoch uint64) (item, future interface{}) {
 		if lru.future > 0 && lru.future == epoch {
 			item = lru.futureItem
 		} else {
-			logger.Debug("Requiring new ethash "+lru.what, "epoch", epoch)
+			logger.WithFields(logger.Fields{
+				"lru_what": lru.what,
+				"epoch":    epoch,
+			}).Debug("Requiring new ethash")
 			item = lru.new(epoch)
 		}
 		lru.cache.Add(epoch, item)
 	}
 	// Update the 'future item' if epoch is larger than previously seen.
 	if epoch < maxEpoch-1 && lru.future < epoch+1 {
-		logger.Debug("Requiring new future ethash "+lru.what, "epoch", epoch+1)
+		logger.WithFields(logger.Fields{
+			"lru_what": lru.what,
+			"epoch":    epoch + 1,
+		}).Debug("Requiring new future ethash")
 		future = lru.new(epoch + 1)
 		lru.future = epoch + 1
 		lru.futureItem = future
@@ -245,12 +238,12 @@ func (c *cache) generate(dir string, limit int, test bool) {
 			logger.Debug("Loaded old ethash cache from disk")
 			return
 		}
-		logger.Debug("Failed to load old ethash cache", "err", err)
+		logger.Debugf("Failed to load old ethash cache,err: %v", err)
 
 		// No previous cache available, create a new cache file to fill
 		c.dump, c.mmap, c.cache, err = memoryMapAndGenerate(path, size, func(buffer []uint32) { generateCache(buffer, c.epoch, seed) })
 		if err != nil {
-			logger.Error("Failed to generate mapped ethash cache", "err", err)
+			logger.Errorf("Failed to generate mapped ethash cache,err: %v", err)
 
 			c.cache = make([]uint32, size/4)
 			generateCache(c.cache, c.epoch, seed)
@@ -328,10 +321,10 @@ func (d *dataset) generate(dir string, limit int, test bool) {
 		var err error
 		d.dump, d.mmap, d.dataset, err = memoryMap(path)
 		if err == nil {
-			logger.Debug("Loaded old ethash dataset from disk")
+			logger.Info("Loaded old ethash dataset from disk")
 			return
 		}
-		logger.Debug("Failed to load old ethash dataset", "err", err)
+		logger.Infof("Failed to load old ethash dataset,err: %v", err)
 
 		// No previous dataset available, create a new dataset file to fill
 		cache := make([]uint32, csize/4)
@@ -339,7 +332,7 @@ func (d *dataset) generate(dir string, limit int, test bool) {
 
 		d.dump, d.mmap, d.dataset, err = memoryMapAndGenerate(path, dsize, func(buffer []uint32) { generateDataset(buffer, d.epoch, cache) })
 		if err != nil {
-			logger.Error("Failed to generate mapped ethash dataset", "err", err)
+			logger.Errorf("Failed to generate mapped ethash dataset,err: %v", err)
 
 			d.dataset = make([]uint32, dsize/2)
 			generateDataset(d.dataset, d.epoch, cache)
@@ -464,14 +457,20 @@ type Ethash struct {
 // packages.
 func New(config Config, notify []string) *Ethash {
 	if config.CachesInMem <= 0 {
-		logger.Warning("One ethash cache must always be in memory", "requested", config.CachesInMem)
+		logger.Warningf("One ethash cache must always be in memory,requested: %v", config.CachesInMem)
 		config.CachesInMem = 1
 	}
 	if config.CacheDir != "" && config.CachesOnDisk > 0 {
-		logger.Info("Disk storage enabled for ethash caches", "dir", config.CacheDir, "count", config.CachesOnDisk)
+		logger.WithFields(logger.Fields{
+			"dir":   config.CacheDir,
+			"count": config.CachesOnDisk,
+		}).Info("Disk storage enabled for ethash caches")
 	}
 	if config.DatasetDir != "" && config.DatasetsOnDisk > 0 {
-		logger.Info("Disk storage enabled for ethash DAGs", "dir", config.DatasetDir, "count", config.DatasetsOnDisk)
+		logger.WithFields(logger.Fields{
+			"dir":   config.DatasetDir,
+			"count": config.DatasetsOnDisk,
+		}).Info("Disk storage enabled for ethash DAGs")
 	}
 	ethash := &Ethash{
 		config:   config,
@@ -513,8 +512,7 @@ func NewTester(notify []string) *Ethash {
 }
 
 // NewFaker creates a ethash consensus engine with a fake PoW scheme that accepts
-// all blocks' seal as valid, though they still have to conform to the Ethereum
-// consensus rules.
+// all blocks' seal as valid, though they still have to conform to the consensus rules.
 func NewFaker() *Ethash {
 	return &Ethash{
 		config: Config{
@@ -525,7 +523,7 @@ func NewFaker() *Ethash {
 
 // NewFakeFailer creates a ethash consensus engine with a fake PoW scheme that
 // accepts all blocks as valid apart from the single one specified, though they
-// still have to conform to the Ethereum consensus rules.
+// still have to conform to the consensus rules.
 func NewFakeFailer(fail uint64) *Ethash {
 	return &Ethash{
 		config: Config{
@@ -537,7 +535,7 @@ func NewFakeFailer(fail uint64) *Ethash {
 
 // NewFakeDelayer creates a ethash consensus engine with a fake PoW scheme that
 // accepts all blocks as valid, but delays verifications by some time, though
-// they still have to conform to the Ethereum consensus rules.
+// they still have to conform to the consensus rules.
 func NewFakeDelayer(delay time.Duration) *Ethash {
 	return &Ethash{
 		config: Config{

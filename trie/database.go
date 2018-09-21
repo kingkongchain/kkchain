@@ -1,4 +1,3 @@
-
 package trie
 
 import (
@@ -8,22 +7,23 @@ import (
 	"time"
 
 	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/storage"
 	"github.com/invin/kkchain/rlp"
+	"github.com/invin/kkchain/storage"
+	log "github.com/sirupsen/logrus"
 )
 
 var (
-	// memcacheFlushTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/flush/time", nil)
-	// memcacheFlushNodesMeter = metrics.NewRegisteredMeter("trie/memcache/flush/nodes", nil)
-	// memcacheFlushSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/flush/size", nil)
+// memcacheFlushTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/flush/time", nil)
+// memcacheFlushNodesMeter = metrics.NewRegisteredMeter("trie/memcache/flush/nodes", nil)
+// memcacheFlushSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/flush/size", nil)
 
-	// memcacheGCTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/gc/time", nil)
-	// memcacheGCNodesMeter = metrics.NewRegisteredMeter("trie/memcache/gc/nodes", nil)
-	// memcacheGCSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/gc/size", nil)
+// memcacheGCTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/gc/time", nil)
+// memcacheGCNodesMeter = metrics.NewRegisteredMeter("trie/memcache/gc/nodes", nil)
+// memcacheGCSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/gc/size", nil)
 
-	// memcacheCommitTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/commit/time", nil)
-	// memcacheCommitNodesMeter = metrics.NewRegisteredMeter("trie/memcache/commit/nodes", nil)
-	// memcacheCommitSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/commit/size", nil)
+// memcacheCommitTimeTimer  = metrics.NewRegisteredResettingTimer("trie/memcache/commit/time", nil)
+// memcacheCommitNodesMeter = metrics.NewRegisteredMeter("trie/memcache/commit/nodes", nil)
+// memcacheCommitSizeMeter  = metrics.NewRegisteredMeter("trie/memcache/commit/size", nil)
 )
 
 // secureKeyPrefix is the database key prefix used to store trie node preimages.
@@ -433,8 +433,16 @@ func (db *Database) Dereference(root common.Hash) {
 	// memcacheGCSizeMeter.Mark(int64(storage - db.nodesSize))
 	// memcacheGCNodesMeter.Mark(int64(nodes - len(db.nodes)))
 
-	log.Debug("Dereferenced trie from memory database", "nodes", nodes-len(db.nodes), "size", storage-db.nodesSize, "time", time.Since(start),
-		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+	log.WithFields(log.Fields{
+		"nodes":     nodes - len(db.nodes),
+		"size":      storage - db.nodesSize,
+		"time":      time.Since(start),
+		"gcnodes":   db.gcnodes,
+		"gcsize":    db.gcsize,
+		"gctime":    db.gctime,
+		"livenodes": len(db.nodes),
+		"livesize":  db.nodesSize,
+	}).Debug("Dereferenced trie from memory database")
 }
 
 // dereference is the private locked version of Dereference.
@@ -506,7 +514,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	if flushPreimages {
 		for hash, preimage := range db.preimages {
 			if err := batch.Put(db.secureKey(hash[:]), preimage); err != nil {
-				log.Error("Failed to commit preimage from trie database", "err", err)
+				log.Errorf("Failed to commit preimage from trie database,err: %v", err)
 				db.lock.RUnlock()
 				return err
 			}
@@ -531,7 +539,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 		// If we exceeded the ideal batch size, commit and reset
 		if batch.ValueSize() >= storage.IdealBatchSize {
 			if err := batch.Write(); err != nil {
-				log.Error("Failed to write flush list to disk", "err", err)
+				log.Errorf("Failed to write flush list to disk,err: %v", err)
 				db.lock.RUnlock()
 				return err
 			}
@@ -546,7 +554,7 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	}
 	// Flush out any remainder data from the last batch
 	if err := batch.Write(); err != nil {
-		log.Error("Failed to write flush list to disk", "err", err)
+		log.Errorf("Failed to write flush list to disk,err: %v", err)
 		db.lock.RUnlock()
 		return err
 	}
@@ -578,8 +586,16 @@ func (db *Database) Cap(limit common.StorageSize) error {
 	// memcacheFlushSizeMeter.Mark(int64(storageSize - db.nodesSize))
 	// memcacheFlushNodesMeter.Mark(int64(nodes - len(db.nodes)))
 
-	log.Debug("Persisted nodes from memory database", "nodes", nodes-len(db.nodes), "size", storageSize-db.nodesSize, "time", time.Since(start),
-		"flushnodes", db.flushnodes, "flushsize", db.flushsize, "flushtime", db.flushtime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+	log.WithFields(log.Fields{
+		"nodes":      nodes - len(db.nodes),
+		"size":       storageSize - db.nodesSize,
+		"time":       time.Since(start),
+		"flushnodes": db.flushnodes,
+		"flushsize":  db.flushsize,
+		"flushtime":  db.flushtime,
+		"livenodes":  len(db.nodes),
+		"livesize":   db.nodesSize,
+	}).Debug("Persisted nodes from memory database")
 
 	return nil
 }
@@ -601,7 +617,7 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 	// Move all of the accumulated preimages into a write batch
 	for hash, preimage := range db.preimages {
 		if err := batch.Put(db.secureKey(hash[:]), preimage); err != nil {
-			log.Error("Failed to commit preimage from trie database", "err", err)
+			log.Errorf("Failed to commit preimage from trie database,err: %v", err)
 			db.lock.RUnlock()
 			return err
 		}
@@ -615,13 +631,13 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 	// Move the trie itself into the batch, flushing if enough data is accumulated
 	nodes, storageSize := len(db.nodes), db.nodesSize
 	if err := db.commit(node, batch); err != nil {
-		log.Error("Failed to commit trie from trie database", "err", err)
+		log.Errorf("Failed to commit trie from trie database,err: %v", err)
 		db.lock.RUnlock()
 		return err
 	}
 	// Write batch ready, unlock for readers during persistence
 	if err := batch.Write(); err != nil {
-		log.Error("Failed to write trie to disk", "err", err)
+		log.Errorf("Failed to write trie to disk,err: %v", err)
 		db.lock.RUnlock()
 		return err
 	}
@@ -640,12 +656,16 @@ func (db *Database) Commit(node common.Hash, report bool) error {
 	// memcacheCommitSizeMeter.Mark(int64(storageSize - db.nodesSize))
 	// memcacheCommitNodesMeter.Mark(int64(nodes - len(db.nodes)))
 
-	logger := log.Info
-	if !report {
-		logger = log.Debug
-	}
-	logger("Persisted trie from memory database", "nodes", nodes-len(db.nodes)+int(db.flushnodes), "size", storageSize-db.nodesSize+db.flushsize, "time", time.Since(start)+db.flushtime,
-		"gcnodes", db.gcnodes, "gcsize", db.gcsize, "gctime", db.gctime, "livenodes", len(db.nodes), "livesize", db.nodesSize)
+	log.WithFields(log.Fields{
+		"nodes":     nodes - len(db.nodes) + int(db.flushnodes),
+		"size":      storageSize - db.nodesSize + db.flushsize,
+		"time":      time.Since(start) + db.flushtime,
+		"gcnodes":   db.gcnodes,
+		"gcsize":    db.gcsize,
+		"gctime":    db.gctime,
+		"livenodes": len(db.nodes),
+		"livesize":  db.nodesSize,
+	}).Debug("Persisted trie from memory database")
 
 	// Reset the garbage collection statistics
 	db.gcnodes, db.gcsize, db.gctime = 0, 0, 0

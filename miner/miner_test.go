@@ -9,6 +9,8 @@ import (
 	"os/user"
 	"path/filepath"
 	"testing"
+
+	logger "github.com/sirupsen/logrus"
 	"time"
 )
 
@@ -40,7 +42,6 @@ func TestMine(t *testing.T) {
 	}
 	t.Log("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
 
-	chain, _ := core.NewBlockChain(chainDb)
 	powConfig := pow.Config{
 		CacheDir:       "ethash",
 		CachesInMem:    2,
@@ -55,6 +56,8 @@ func TestMine(t *testing.T) {
 	engine := pow.New(powConfig, nil)
 	defer engine.Close()
 
+	chain, _ := core.NewBlockChain(chainDb, engine)
+
 	txpool := core.NewTxPool()
 
 	miner := New(chain, txpool, engine)
@@ -63,10 +66,14 @@ func TestMine(t *testing.T) {
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
 
-	time.Sleep(time.Duration(2 * time.Second))
-	chain.PostSyncDoneEvent(struct{}{})
-	//time.Sleep(time.Duration(1 * time.Second))
-	//chain.PostSyncDoneEvent(struct{}{})
+	time.Sleep(time.Duration(8 * time.Second))
+
+	logger.Info("PostSyncStartEvent")
+	chain.PostSyncStartEvent(core.StartEvent{})
+
+	time.Sleep(time.Duration(10 * time.Second))
+	logger.Info("PostSyncDoneEvent")
+	chain.PostSyncDoneEvent(core.DoneEvent{})
 
 	wait := make(chan interface{})
 	select {

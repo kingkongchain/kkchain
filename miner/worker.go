@@ -46,8 +46,6 @@ type worker struct {
 	txpool *core.TxPool
 	engine consensus.Engine
 
-	mineLoopCh chan struct{}
-
 	//tx pool add new txs
 	txsCh  chan types.Transactions
 	txsSub event.Subscription
@@ -72,7 +70,6 @@ func newWorker(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine
 		engine:      engine,
 		txsCh:       make(chan types.Transactions),
 		chainHeadCh: make(chan core.ChainHeadEvent),
-		mineLoopCh:  make(chan struct{}),
 		taskCh:      make(chan *task),
 		resultCh:    make(chan *task),
 	}
@@ -111,9 +108,6 @@ func (w *worker) mineLoop() {
 			if w.isRunning() {
 				w.commitTask()
 			}
-		case <-w.mineLoopCh:
-			//Start new mine task
-			w.commitTask()
 		case <-w.startCh:
 			w.commitTask()
 		case <-w.quitCh:
@@ -157,7 +151,6 @@ func (w *worker) close() {
 
 func (w *worker) waitResult() {
 	for {
-		logger.Debug("waitResult....")
 		select {
 		case result := <-w.resultCh:
 			// Short circuit when receiving empty result.
@@ -166,7 +159,7 @@ func (w *worker) waitResult() {
 			}
 			block := result.block
 
-			w.blockinfo(block)
+			w.blockinfo("new block mined!!! =====>", block)
 
 			// Short circuit when receiving duplicate result caused by resubmitting.
 			if w.chain.HasBlock(block.Hash(), block.NumberU64()) {
@@ -178,7 +171,7 @@ func (w *worker) waitResult() {
 			// Commit block and state to database.
 			err := w.chain.WriteBlockWithState(block, result.receipts, result.state)
 			if err != nil {
-				log.Error("Failed writing block to chain", "err", err)
+				log.Errorf("Failed writing block to chain,err: %v", err)
 				continue
 			}
 			// Broadcast the block and announce chain insertion event
@@ -189,7 +182,6 @@ func (w *worker) waitResult() {
 
 			events = append(events, core.ChainHeadEvent{Block: block})
 			events = append(events, core.NewMinedBlockEvent{Block: block})
-			log.Info("********Begin PostChainEvents----")
 			w.chain.PostChainEvents(events, logs)
 
 			//
@@ -205,11 +197,12 @@ func (w *worker) waitResult() {
 func (w *worker) commitTask() {
 	w.mu.RLock()
 	defer w.mu.RUnlock()
-	logger.Debug("commitTask...")
+
 	if !w.isRunning() {
 		return
 	}
-
+	if w.currentCtx != nil {
+	}
 	tstart := time.Now()
 	parent := w.chain.CurrentBlock()
 
@@ -220,7 +213,7 @@ func (w *worker) commitTask() {
 	// this will ensure we're not going off too far in the future
 	if now := time.Now().Unix(); tstamp > now+1 {
 		wait := time.Duration(tstamp-now) * time.Second
-		log.Info("Mining too far in the future", "wait", wait)
+		log.Infof("Mining too far in the future,wait: %v", wait)
 		time.Sleep(wait)
 	}
 
@@ -236,7 +229,7 @@ func (w *worker) commitTask() {
 	// Could potentially happen if starting to mine in an odd state.
 	err := w.currentContext(parent, header)
 	if err != nil {
-		log.Error("Failed to create mining context", "err", err)
+		log.Errorf("Failed to create mining context,err: %v", err)
 		return
 	}
 
@@ -293,7 +286,6 @@ func (w *worker) taskLoop() {
 		}
 	}
 	for {
-		logger.Debug("taskLoop....")
 		select {
 		case task := <-w.taskCh:
 
@@ -317,12 +309,12 @@ func (w *worker) seal(t *task, stop <-chan struct{}) {
 	)
 
 	if t.block, err = w.engine.Execute(w.chain, t.block, stop); t.block != nil {
-		//logger.Info("Successfully sealed new block", "number", t.block.Number(), "hash", t.block.Hash(),
+		//log.Info("Successfully sealed new block", "number", t.block.Number(), "hash", t.block.Hash(),
 		//	"elapsed", time.Since(t.createdAt))
 		res = t
 	} else {
 		if err != nil {
-			logger.Debug("Block sealing failed", "err", err)
+			log.Errorf("Block sealing failed,err: %v", err)
 		}
 		res = nil
 	}
@@ -348,19 +340,17 @@ func (w *worker) currentContext(parent *types.Block, header *types.Header) error
 	return nil
 }
 
-func (w *worker) blockinfo(block *types.Block) {
-
-	fmt.Printf(`new block mined!!! =====>
-	number: %d 
-	{
-		hash: %s
-		parent: %s
-		state: %s
-		diff: 0x%x
-		gaslimit: %d
-		gasused: %d
-		nonce: 0x%x
-	}`+"\n", block.Number(), block.Hash().String(), block.ParentHash().String(), block.StateRoot().String(), block.Difficulty(), block.GasLimit(), block.GasUsed(), block.Nonce())
+func (w *worker) blockinfo(desc string, block *types.Block) {
+	log.WithFields(log.Fields{
+		"number":     block.NumberU64(),
+		"hash":       block.Hash().String(),
+		"parentHash": block.ParentHash().String(),
+		"stateRoot":  block.StateRoot().String(),
+		"difficulty": block.Difficulty(),
+		"gasLimit":   block.GasLimit(),
+		"gasUsed":    block.GasUsed(),
+		"nonce":      block.Nonce(),
+	}).Info(desc)
 }
 
 var (

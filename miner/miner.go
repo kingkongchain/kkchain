@@ -8,11 +8,7 @@ import (
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core"
-	"github.com/op/go-logging"
-)
-
-var (
-	logger = logging.MustGetLogger("miner")
+	logger "github.com/sirupsen/logrus"
 )
 
 type Miner struct {
@@ -26,20 +22,21 @@ type Miner struct {
 	isLocalMining int32
 
 	// sync start event
-	syncStartCh  chan struct{}
+	syncStartCh  chan core.StartEvent
 	syncStartSub event.Subscription
 	// sync over event
-	syncDoneCh  chan struct{}
+	syncDoneCh  chan core.DoneEvent
 	syncDoneSub event.Subscription
 }
 
 func New(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *Miner {
 	miner := &Miner{
 		quitCh:      make(chan struct{}),
-		syncStartCh: make(chan struct{}),
-		syncDoneCh:  make(chan struct{}),
+		syncStartCh: make(chan core.StartEvent),
+		syncDoneCh:  make(chan core.DoneEvent),
 		worker:      newWorker(bc, txpool, engine),
 		chain:       bc,
+		syncDone:    1,
 	}
 
 	go miner.onEvent()
@@ -47,8 +44,7 @@ func New(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *Min
 }
 
 func (m *Miner) onEvent() {
-	// Subscribe events from syncmgr, now implement in blockchain for test
-	//TODO: syncmgr must support subscribe interface
+	// Subscribe events
 	m.syncStartSub = m.chain.SubscribeSyncStartEvent(m.syncStartCh)
 	defer m.syncStartSub.Unsubscribe()
 
@@ -58,26 +54,22 @@ func (m *Miner) onEvent() {
 	for {
 		select {
 		case <-m.syncStartCh:
-			logger.Debug("sync start....")
+			atomic.StoreInt32(&m.syncDone, 0)
 			if m.Mining() {
-				localMining := atomic.LoadInt32(&m.isLocalMining) == 1
 				m.Stop()
-				//if started before，set isLocalMing to 1
-				if localMining {
-					atomic.StoreInt32(&m.isLocalMining, 1)
-				}
+				atomic.StoreInt32(&m.isLocalMining, 1)
 			}
 		case <-m.syncDoneCh:
-			logger.Debug("sync done....")
 			atomic.StoreInt32(&m.syncDone, 1)
-			m.syncDoneSub.Unsubscribe()
 			if atomic.LoadInt32(&m.isLocalMining) == 1 {
 				m.Start()
 			}
 			//
-		case <-m.syncStartSub.Err():
+		case err := <-m.syncStartSub.Err():
+			logger.Error(err)
 			return
-		case <-m.syncDoneSub.Err():
+		case err := <-m.syncDoneSub.Err():
+			logger.Error(err)
 			return
 		case <-m.quitCh:
 			return
@@ -90,12 +82,10 @@ func (m *Miner) Start() {
 	atomic.StoreInt32(&m.isLocalMining, 1)
 
 	if atomic.LoadInt32(&m.syncDone) == 0 {
-		logger.Info("syncing, will start miner afterwards")
 		return
 	}
 
 	if m.worker.isRunning() {
-		logger.Info("mining")
 		return
 	}
 

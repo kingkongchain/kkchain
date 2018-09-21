@@ -8,6 +8,7 @@ import (
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/dht"
 	"github.com/invin/kkchain/p2p/handshake"
+	log "github.com/sirupsen/logrus"
 )
 
 // Host defines a host for connections
@@ -16,6 +17,9 @@ type Host struct {
 
 	// connection map
 	connections map[string]p2p.Conn
+
+	// max connections allowed
+	maxConnections int
 
 	// message handler map
 	handlers map[string]p2p.MessageHandler
@@ -36,11 +40,12 @@ type Host struct {
 // NewHost creates a new host object
 func NewHost(id p2p.ID, n p2p.Network) *Host {
 	return &Host{
-		id:          id,
-		connections: make(map[string]p2p.Conn),
-		handlers:    make(map[string]p2p.MessageHandler),
-		notifiees:   make(map[p2p.Notifiee]struct{}),
-		n:           n,
+		id:             id,
+		connections:    make(map[string]p2p.Conn),
+		maxConnections: 32, // TODO: parameterize
+		handlers:       make(map[string]p2p.MessageHandler),
+		notifiees:      make(map[p2p.Notifiee]struct{}),
+		n:              n,
 	}
 }
 
@@ -98,7 +103,6 @@ func (h *Host) notifyAll(notification func(n p2p.Notifiee)) {
 
 // OnConnectionCreated is called when new connection is available
 func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
-	log.Infof("A connection is created,direction: %s", dir)
 	// Loop to handle messages
 	go func() {
 		defer c.Close()
@@ -115,7 +119,6 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 			return
 		}
 
-		log.Infof("Loop to handle messages,remote ID: %s", pid)
 		// handle other messages
 		for {
 			msg, protocol, err := c.ReadMessage()
@@ -134,8 +137,6 @@ func (h *Host) OnConnectionCreated(c p2p.Conn, dir p2p.ConnDir) {
 		}
 
 		h.RemoveConnection(pid)
-
-		log.Debug("break loop for connection")
 	}()
 }
 
@@ -157,6 +158,11 @@ func (h *Host) dispatchMessage(conn p2p.Conn, msg proto.Message, protocol string
 func (h *Host) AddConnection(id p2p.ID, conn p2p.Conn) error {
 	h.mux.Lock()
 	defer h.mux.Unlock()
+
+	// Check if there are too many connections
+	if len(h.connections) >= h.maxConnections {
+		return errConnectionExceedMax
+	}
 
 	publicKey := string(id.PublicKey)
 	_, found := h.connections[publicKey]

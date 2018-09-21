@@ -22,6 +22,12 @@ func NewMessage(typ Message_Type, data interface{}) *Message {
 			GetBlockHeadersMsg: data.(*GetBlockHeadersMsg),
 		}
 		break
+	case *GetBlocksMsg:
+		m = &Message{
+			Type:         typ,
+			GetBlocksMsg: data.(*GetBlocksMsg),
+		}
+		break
 	default:
 		return nil
 	}

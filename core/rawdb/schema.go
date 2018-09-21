@@ -36,8 +36,8 @@ var (
 	txLookupPrefix  = []byte("l") // txLookupPrefix + hash -> transaction/receipt lookup metadata
 	bloomBitsPrefix = []byte("B") // bloomBitsPrefix + bit (uint16 big endian) + section (uint64 big endian) + hash -> bloom bits
 
-	preimagePrefix = []byte("secure-key-")      // preimagePrefix + hash -> preimage
-	configPrefix   = []byte("ethereum-config-") // config prefix for the db
+	preimagePrefix = []byte("secure-key-")     // preimagePrefix + hash -> preimage
+	configPrefix   = []byte("kkchain-config-") // config prefix for the db
 
 	// Chain index prefixes (use `i` + single byte to avoid mixing data types).
 	BloomBitsIndexPrefix = []byte("iB") // BloomBitsIndexPrefix is the data table of a chain indexer to track its progress
@@ -50,9 +50,9 @@ var (
 // TxLookupEntry is a positional metadata to help looking up the data content of
 // a transaction or receipt given only its hash
 type TxLookupEntry struct {
-	BlockHash 	common.Hash
-	BlockIndex 	uint64
-	Index		uint64
+	BlockHash  common.Hash
+	BlockIndex uint64
+	Index      uint64
 }
 
 // encodeBlockNumber encodes a block number as big endian uint64

@@ -2,6 +2,7 @@ package types
 
 import (
 	"encoding/binary"
+	"fmt"
 	"io"
 	"math/big"
 	"sort"
@@ -252,6 +253,21 @@ func (b *Block) Size() common.StorageSize {
 	rlp.Encode(&c, b)
 	b.size.Store(common.StorageSize(c))
 	return common.StorageSize(c)
+}
+
+func (b *Block) String() string {
+	str := fmt.Sprintf(`
+	number: %d
+	{
+		hash: %s
+		parent: %s
+		state: %s
+		diff: 0x%x
+		gaslimit: %d
+		gasused: %d
+		nonce: 0x%x
+	}`+"\n", b.Number(), b.Hash().String(), b.ParentHash().String(), b.StateRoot().String(), b.Difficulty(), b.GasLimit(), b.GasUsed(), b.Nonce())
+	return str
 }
 
 type writeCounter common.StorageSize
