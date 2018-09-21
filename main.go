@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/consensus/pow"
 	"github.com/invin/kkchain/core"
@@ -23,26 +22,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// init config and loggingLoger
-func Init(path *string) {
-	if path != nil {
-		fmt.Println("path:", *path)
-		config.Init(*path)
-	} else {
-		fmt.Println("path:", *path)
-		config.Init("")
-	}
-}
-
 func main() {
 	port := flag.String("p", "9998", "")
 	keypath := flag.String("k", "", "")
-	configpath := flag.String("c", "", "")
 	mineFlag := flag.String("m", "", "")
 	fakeFlag := flag.String("f", "fakeMineFlag", "true is fake mine")
 	flag.Parse()
-	log.Info("configpath:", *configpath)
-	Init(configpath)
 
 	config := &core.Config{DataDir: ""}
 

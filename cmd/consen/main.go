@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/consensus/pow"
 	"github.com/invin/kkchain/core"
@@ -23,41 +22,27 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// var log = logging.MustGetLogger("cmd/consensus")
-
-// init config and loggingLoger
-func Init(path *string) {
-	if path != nil {
-		fmt.Println("path:", *path)
-		config.Init(*path)
-	} else {
-		fmt.Println("path:", *path)
-		config.Init("")
-	}
-}
-
 func main() {
 	port := flag.String("p", "9998", "")
-	//sec := flag.Int("s", 120, "")
 	keypath := flag.String("k", "", "")
-	configpath := flag.String("c", "", "")
 	mineFlag := flag.String("m", "", "")
 	fakeFlag := flag.String("f", "fakeMineFlag", "true is fake mine")
+	dataStoreDir := flag.String("d", "dataStoreDir", "A directory that stores block data")
 	flag.Parse()
-	log.Info("configpath:", *configpath)
-	Init(configpath)
-	//seconds := time.Duration(*sec)
 
-	config := &core.Config{DataDir: ""}
+	config := &core.Config{DataDir: "data"}
 
-	chainDb, _ := core.OpenDatabase(config, "chaindata")
+	chainDb, _ := core.OpenDatabase(config, *dataStoreDir)
 
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlock(chainDb, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
-		log.Info("setup genesis failed： %s\n", genesisErr)
+		log.Errorf("setup genesis failed： %s\n", genesisErr)
 		return
 	}
-	log.Info("Initialised chain configuration", "config", chainConfig, "genesis", genesisHash.String())
+	log.WithFields(log.Fields{
+		"config":  chainConfig,
+		"genesis": genesisHash.String(),
+	}).Info("Initialised chain configuration")
 
 	engine := newEngine(fakeFlag)
 	chain, _ := core.NewBlockChain(chainDb, engine)
@@ -66,20 +51,17 @@ func main() {
 		ticker := time.NewTicker(8 * time.Second)
 		for _ = range ticker.C {
 			block := chain.CurrentBlock()
-			log.Infof("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
+			fmt.Printf("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
 		}
 	}()
 
-	// TODO: start p2p ..
 	go doP2P(chain, *port, *keypath)
 
-	// TODO: start miner ..
 	if *mineFlag == "true" {
 		doMiner(chain, engine)
 	}
 
 	select {}
-	//time.Sleep(time.Second * seconds)
 }
 
 func doP2P(bc *core.BlockChain, port, keypath string) {
@@ -99,13 +81,13 @@ func doP2P(bc *core.BlockChain, port, keypath string) {
 		pub, _ := ed25519.New().PrivateToPublic(pri)
 		node := "/ip4/127.0.0.1/tcp/9998"
 		node = hex.EncodeToString(pub) + "@" + node
-		log.Info("remote peer: %s\n", node)
+		log.Infof("remote peer: %s", node)
 		net.BootstrapNodes = []string{node}
 	}
 
 	err := net.Start()
 	if err != nil {
-		log.Error("failed to start server: %s\n", err)
+		log.Errorf("failed to start server: %s\n", err)
 	}
 
 }
@@ -129,7 +111,6 @@ func newEngine(fakeFlag *string) consensus.Engine {
 			DatasetsInMem:  1,
 			DatasetsOnDisk: 2,
 			PowMode:        pow.ModeNormal,
-			//PowMode: pow.ModeFake,
 		}
 		engine = pow.New(powconfig, nil)
 	}
@@ -138,8 +119,6 @@ func newEngine(fakeFlag *string) consensus.Engine {
 }
 
 func doMiner(chain *core.BlockChain, engine consensus.Engine) {
-	log.Info("\n进入doMiner 。。。\n")
-
 	defer engine.Close()
 
 	txpool := core.NewTxPool()
@@ -149,9 +128,6 @@ func doMiner(chain *core.BlockChain, engine consensus.Engine) {
 
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
-
-	//time.Sleep(time.Duration(2 * time.Second))
-	//chain.PostSyncDoneEvent(struct{}{})
 
 	wait := make(chan interface{})
 	select {
