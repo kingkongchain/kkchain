@@ -259,7 +259,6 @@ func (h *Host) Connect(address string) (p2p.Conn, error) {
 	}
 
 	c := NewConnection(conn, h.n, h)
-
 	h.OnConnectionCreated(c, p2p.Outbound)
 	return c, nil
 }
