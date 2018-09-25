@@ -1,6 +1,7 @@
 package main
 
 import (
+	"syscall"
 	"encoding/hex"
 	"flag"
 	"fmt"
@@ -8,6 +9,7 @@ import (
 	"os/user"
 	"path/filepath"
 	"time"
+	"os/signal"
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus"
@@ -20,6 +22,7 @@ import (
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
 	log "github.com/sirupsen/logrus"
+	"github.com/jbenet/goprocess"
 )
 
 func main() {
@@ -30,9 +33,15 @@ func main() {
 	dataStoreDir := flag.String("d", "dataStoreDir", "A directory that stores block data")
 	flag.Parse()
 
+	c := make(chan os.Signal, 2)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	log.Println("Setup signal notifiers for os.Interrupt and syscall.SIGTERM")
+
 	config := &core.Config{DataDir: "data"}
 
+	start := time.Now()
 	chainDb, _ := core.OpenDatabase(config, *dataStoreDir)
+	log.Printf("Opening rodcksdb takes %s\n", time.Since(start))
 
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlock(chainDb, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
@@ -47,24 +56,64 @@ func main() {
 	engine := newEngine(fakeFlag)
 	chain, _ := core.NewBlockChain(chainDb, engine)
 
-	go func() {
+	// Use goprocess to setup process tree
+	proc := goprocess.WithTeardown(func() error {
+		log.Info("Tear down kkchain")
+		chainDb.Close()
+		log.Printf("Chaindb closed")	
+		return nil
+	})
+
+	proc.Go(func(p goprocess.Process) {
 		ticker := time.NewTicker(8 * time.Second)
-		for _ = range ticker.C {
-			block := chain.CurrentBlock()
-			fmt.Printf("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
+		// loop to print current block info
+		for {
+			select {
+			case <- ticker.C:
+				block := chain.CurrentBlock()
+				fmt.Printf("!!!!!blockchain info: CurrentBlock:====> %s", block.String())
+			case <- p.Closing():
+				log.Println("Exit block ticker")
+				return
+			default:
+				time.Sleep(1 * time.Second)
+			}
+			
+		}
+	})
+
+	// Setup handler for interrupt or terminate
+	go func(){
+		for sig := range c {
+			// sig is a ^C, handle it
+			log.Printf("Asked to quit now %v", sig)
+			proc.Close()
+			// TODO: add other clean code
+			time.Sleep(3 * time.Second)
+			log.Println("Everything is shutdown properly, exit now")		
+			os.Exit(1)
 		}
 	}()
 
-	go doP2P(chain, *port, *keypath)
+	// Run p2p module
+	proc.Go(func(p goprocess.Process) {
+		doP2P(chain, *port, *keypath, p)
+	})
 
+	// Run mining if requested
 	if *mineFlag == "true" {
-		doMiner(chain, engine)
+		proc.Go(func(p goprocess.Process) {
+			doMiner(chain, engine, p)
+			engine.Close()
+			log.Println("Engine closed")
+		})
 	}
 
+	// Wait for break 
 	select {}
 }
 
-func doP2P(bc *core.BlockChain, port, keypath string) {
+func doP2P(bc *core.BlockChain, port, keypath string, p goprocess.Process) {
 
 	p2pconfig := p2p.Config{
 		SignaturePolicy: ed25519.New(),
@@ -88,8 +137,14 @@ func doP2P(bc *core.BlockChain, port, keypath string) {
 	err := net.Start()
 	if err != nil {
 		log.Errorf("failed to start server: %s\n", err)
+		return
 	}
 
+	select {
+	case <-p.Closing():
+		net.Stop()
+		log.Print("Network stopped")
+	}
 }
 
 func newEngine(fakeFlag *string) consensus.Engine {
@@ -118,20 +173,17 @@ func newEngine(fakeFlag *string) consensus.Engine {
 
 }
 
-func doMiner(chain *core.BlockChain, engine consensus.Engine) {
-	defer engine.Close()
-
+func doMiner(chain *core.BlockChain, engine consensus.Engine, p goprocess.Process) {
 	txpool := core.NewTxPool()
-
 	miner := miner.New(chain, txpool, engine)
-	defer miner.Close()
 
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	miner.Start()
 
-	wait := make(chan interface{})
 	select {
-	case <-wait:
-
+	case <-p.Closing():
+		miner.Stop()
+		miner.Close()
+		log.Print("Miner stopped and closed")
 	}
 }
