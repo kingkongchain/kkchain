@@ -25,10 +25,6 @@ type RDBDatabase struct {
 func New(dir string, applyOpts func(opts *rdb.Options)) (*RDBDatabase, error) {
 	// Create default options
 	opts := rdb.NewDefaultOptions()
-
-	// FIXME: set ratelimiter
-	ratelimiter := rdb.NewRateLimiter(1024, 100*1000, 10)
-	opts.SetRateLimiter(ratelimiter)
 	opts.SetCreateIfMissing(true)
 
 	if applyOpts != nil {
