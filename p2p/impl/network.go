@@ -4,11 +4,15 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/crypto"
+	"github.com/invin/kkchain/crypto/blake2b"
+	"github.com/invin/kkchain/crypto/ed25519"
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/dht"
+
 	"github.com/jbenet/goprocess"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -38,7 +42,7 @@ type Network struct {
 	chain *chain.Chain
 
 	// Bootstrap seed nodes
-	BootstrapNodes []string
+	bootstrapNodes []string
 
 	// process to manager other child processes
 	proc goprocess.Process
@@ -46,23 +50,31 @@ type Network struct {
 	bc *core.BlockChain
 }
 
+func DefaultConfig() p2p.Config {
+	return p2p.Config{
+		SignaturePolicy: ed25519.New(),
+		HashPolicy:      blake2b.New(),
+	}
+}
+
 // NewNetwork creates a new Network instance with the specified configuration
-func NewNetwork(privateKeyPath, address string, conf p2p.Config, bc *core.BlockChain) *Network {
-	keys, _ := p2p.LoadNodeKeyFromFileOrCreateNew(privateKeyPath)
-	id := p2p.CreateID(address, keys.PublicKey)
+func NewNetwork(networkConfig *config.NetworkConfig, dhtConfig *config.DhtConfig, bc *core.BlockChain) *Network {
+	keys, _ := p2p.LoadNodeKeyFromFileOrCreateNew(networkConfig.PrivateKey)
+	id := p2p.CreateID(networkConfig.Listen, keys.PublicKey)
 
 	n := &Network{
-		conf:       conf,
-		keys:       keys,
-		listenAddr: address,
-		bc:         bc,
+		conf:           DefaultConfig(),
+		keys:           keys,
+		listenAddr:     networkConfig.Listen,
+		bc:             bc,
+		bootstrapNodes: networkConfig.Seeds,
 	}
 
 	n.host = NewHost(id, n)
 
 	// Create submodules
 	n.chain = chain.New(n.host, n.bc)
-	n.dht = dht.New(dht.DefaultConfig(), n, n.host)
+	n.dht = dht.New(dhtConfig, n.host)
 
 	return n
 }
@@ -126,7 +138,7 @@ func (n *Network) Conf() p2p.Config {
 
 // Bootstraps returns seed nodes
 func (n *Network) Bootstraps() []string {
-	return n.BootstrapNodes
+	return n.bootstrapNodes
 }
 
 // Stop stops the p2p stack
@@ -186,7 +198,7 @@ func (n *Network) startListening() error {
 
 // Bootstrap connects to seed nodes
 func (n *Network) bootstrap(p goprocess.Process) {
-	for _, node := range n.BootstrapNodes {
+	for _, node := range n.bootstrapNodes {
 		// Check if we're asked to shutdown
 		select {
 		case <-p.Closing():

@@ -6,12 +6,10 @@ import (
 	"fmt"
 	"math/big"
 	"math/rand"
-	"os"
-	"path/filepath"
 	"sync"
 	"sync/atomic"
 
-	lru "github.com/hashicorp/golang-lru"
+	"github.com/hashicorp/golang-lru"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/core/rawdb"
@@ -19,8 +17,6 @@ import (
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
 	"github.com/invin/kkchain/storage"
-	"github.com/invin/kkchain/storage/memdb"
-	"github.com/invin/kkchain/storage/rocksdb"
 
 	log "github.com/sirupsen/logrus"
 )
@@ -307,47 +303,6 @@ func (bc *BlockChain) SetHead(head uint64) error {
 
 	return bc.loadLastState()
 }
-
-//TODO: remove to node config
-func OpenDatabase(config *Config, name string) (storage.Database, error) {
-	if config.DataDir == "" {
-		return memdb.New(), nil
-	}
-	db, err := rocksdb.New(resolvePath(name), nil)
-	if err != nil {
-		return nil, err
-	}
-	return db, nil
-}
-
-// ResolvePath resolves path in the instance directory.
-func resolvePath(path string) string {
-	if filepath.IsAbs(path) {
-		return path
-	}
-	joinPath := filepath.Join("./data", path)
-	if flag, _ := PathExists(joinPath); !flag {
-		err := os.MkdirAll(joinPath, 0766)
-		if err != nil {
-			log.Errorf("Create directory error: %v", err)
-		}
-	}
-
-	return joinPath
-}
-
-func PathExists(path string) (bool, error) {
-	_, err := os.Stat(path)
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
-//END TODO
 
 // WriteBlockWithState writes the block and all associated state to the database.
 func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.Receipt, state *state.StateDB) error {
