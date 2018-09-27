@@ -369,6 +369,8 @@ func (dht *DHT) checkPingPong() {
 					dht.pingpong.DeletePingPongAt(p)
 				}
 			}
+		case <-dht.quitCh:
+			return
 		}
 	}
 }

@@ -47,6 +47,8 @@ type Chain struct {
 	acceptTxs uint32 // Flag whether we're considered synchronised (enables transaction processing)
 
 	syncer *sync.Syncer
+
+	quitCh chan struct{}
 }
 
 func init() {
@@ -59,6 +61,7 @@ func New(host p2p.Host, bc *core.BlockChain) *Chain {
 		host:       host,
 		blockchain: bc,
 		peers:      NewPeerSet(),
+		quitCh:     make(chan struct{}),
 	}
 	c.newMinedBlockCh = make(chan core.NewMinedBlockEvent, 256)
 
@@ -207,6 +210,7 @@ func (c *Chain) Start(maxPeers int) {
 }
 
 func (c *Chain) Stop() {
+	close(c.quitCh)
 	c.syncer.Stop()
 	//pm.txsSub.Unsubscribe()        // quits txBroadcastLoop
 	c.mineBlockSub.Unsubscribe() // quits blockBroadcastLoop
@@ -228,6 +232,9 @@ func (c *Chain) minedBroadcastLoop() {
 
 			c.BroadcastBlock(block, true)  // First propagate block to peers
 			c.BroadcastBlock(block, false) // Only then announce to the rest
+
+		case <-c.quitCh:
+			return
 		}
 	}
 }
