@@ -19,6 +19,9 @@ import (
 	"github.com/invin/kkchain/core/types"
 
 	log "github.com/sirupsen/logrus"
+	"os"
+	"os/user"
+	"path/filepath"
 )
 
 var (
@@ -37,6 +40,30 @@ var (
 	errInvalidMixDigest  = errors.New("invalid mix digest")
 	errInvalidPoW        = errors.New("invalid proof-of-work")
 )
+
+var (
+	DefaultConfig = Config{
+		CacheDir:       "ethash",
+		CachesInMem:    2,
+		CachesOnDisk:   3,
+		DatasetsInMem:  1,
+		DatasetsOnDisk: 2,
+	}
+)
+
+func init() {
+	home := os.Getenv("HOME")
+	if home == "" {
+		if user, err := user.Current(); err == nil {
+			home = user.HomeDir
+		}
+	}
+	if runtime.GOOS == "windows" {
+		DefaultConfig.DatasetDir = filepath.Join(home, "AppData", "Ethash")
+	} else {
+		DefaultConfig.DatasetDir = filepath.Join(home, ".ethash")
+	}
+}
 
 func (ethash *Ethash) Initialize(chain consensus.ChainReader, header *types.Header) error {
 	parent := chain.GetHeader(header.ParentHash, header.Number.Uint64()-1)

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
+	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/p2p"
 	log "github.com/sirupsen/logrus"
 )
@@ -32,29 +33,21 @@ type DHTConfig struct {
 // DHT implements a Distributed Hash Table for p2p
 type DHT struct {
 	// self
-	host    p2p.Host
-	network p2p.Network
+	host p2p.Host
 
 	quitCh         chan bool
 	table          *RoutingTable
 	store          *PeerStore
-	config         *DHTConfig
+	config         *config.DhtConfig
 	self           PeerID
 	BootstrapNodes []string
 	pingpong       *PingPongService
 }
 
-func DefaultConfig() *DHTConfig {
-	return &DHTConfig{
-		BucketSize:      BucketSize,
-		RoutingTableDir: "",
-	}
-}
-
 // New creates a new DHT object with the given peer as as the 'local' host
-func New(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
+func New(dhtConfig *config.DhtConfig, host p2p.Host) *DHT {
 	// If no node database was given, use an in-memory one
-	db, err := newPeerStore(config.RoutingTableDir)
+	db, err := newPeerStore(dhtConfig.RoutingTableDir)
 	if err != nil {
 		return nil
 	}
@@ -62,16 +55,16 @@ func New(config *DHTConfig, network p2p.Network, host p2p.Host) *DHT {
 	self := CreateID(host.ID().Address, host.ID().PublicKey)
 
 	dht := &DHT{
-		quitCh:   make(chan bool),
-		config:   config,
-		self:     self,
-		table:    CreateRoutingTable(self),
-		store:    db,
-		pingpong: newPingPongService(),
+		quitCh:         make(chan bool),
+		config:         dhtConfig,
+		self:           self,
+		table:          CreateRoutingTable(self),
+		store:          db,
+		pingpong:       newPingPongService(),
+		BootstrapNodes: dhtConfig.Seeds,
 	}
 
 	dht.host = host
-	dht.network = network
 
 	if err := dht.host.SetMessageHandler(protocolDHT, dht.handleMessage); err != nil {
 		panic(err)
@@ -240,7 +233,7 @@ func (dht *DHT) SyncRouteTable() {
 	syncedPeers := make(map[string]bool)
 
 	// sync with seed nodes.
-	for _, addr := range dht.network.Bootstraps() {
+	for _, addr := range dht.BootstrapNodes {
 		pid, err := ParsePeerAddr(addr)
 		if err != nil {
 			log.Errorf("connect with error: %v", err)
@@ -284,7 +277,7 @@ func (dht *DHT) saveTableToStore() {
 }
 
 func (dht *DHT) loadBootstrapNodes() {
-	for _, addr := range dht.network.Bootstraps() {
+	for _, addr := range dht.BootstrapNodes {
 		peer, err := ParsePeerAddr(addr)
 		if err != nil {
 			continue
