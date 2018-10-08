@@ -18,10 +18,11 @@ import (
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 
-	log "github.com/sirupsen/logrus"
 	"os"
 	"os/user"
 	"path/filepath"
+
+	log "github.com/sirupsen/logrus"
 )
 
 var (
@@ -347,6 +348,12 @@ search:
 // given the parent block's time and difficulty.
 func (ethash *Ethash) CalcDifficulty(chain consensus.ChainReader, time uint64, parent *types.Header) *big.Int {
 	return calcDifficultyFrontier(time, parent)
+}
+
+// Author implements consensus.Engine, returning the header's coinbase as the
+// proof-of-work verified author of the block.
+func (ethash *Ethash) Author(header *types.Header) (common.Address, error) {
+	return header.Miner, nil
 }
 
 // calcDifficultyFrontier is the difficulty adjustment algorithm. It returns the
