@@ -13,6 +13,8 @@ import (
 	"github.com/invin/kkchain/p2p/chain"
 	"github.com/invin/kkchain/p2p/dht"
 
+	"encoding/hex"
+
 	"github.com/jbenet/goprocess"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -204,7 +206,14 @@ func (n *Network) bootstrap(p goprocess.Process) {
 		case <-p.Closing():
 			return
 		default:
-			log.Infof("connect to %s", node)
+
+			// check the seed is not self
+			self := hex.EncodeToString(n.host.ID().PublicKey) + "@" + n.host.ID().Address
+			if node == self {
+				log.Warn("refuse to connect self")
+			} else {
+				log.Infof("connect to %s", node)
+			}
 		}
 
 		// Parse peer address to get IP

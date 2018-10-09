@@ -234,6 +234,13 @@ func (dht *DHT) SyncRouteTable() {
 
 	// sync with seed nodes.
 	for _, addr := range dht.BootstrapNodes {
+
+		// check the seed is not self
+		self := hex.EncodeToString(dht.host.ID().PublicKey) + "@" + dht.host.ID().Address
+		if addr == self {
+			continue
+		}
+
 		pid, err := ParsePeerAddr(addr)
 		if err != nil {
 			log.Errorf("connect with error: %v", err)
@@ -278,6 +285,14 @@ func (dht *DHT) saveTableToStore() {
 
 func (dht *DHT) loadBootstrapNodes() {
 	for _, addr := range dht.BootstrapNodes {
+
+		// check the seed is not self
+		self := hex.EncodeToString(dht.host.ID().PublicKey) + "@" + dht.host.ID().Address
+		if addr == self {
+			log.Warn("refuse to load self to dht table")
+			continue
+		}
+
 		peer, err := ParsePeerAddr(addr)
 		if err != nil {
 			continue
