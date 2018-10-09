@@ -58,6 +58,11 @@ type Engine interface {
 	Close() error
 
 	CalcDifficulty(chain ChainReader, time uint64, parent *types.Header) *big.Int
+
+	// Author retrieves the address of the account that minted the given
+	// block, which may be different from the header's coinbase if a consensus
+	// engine is based on signatures.
+	Author(header *types.Header) (common.Address, error)
 }
 
 type Network interface {
