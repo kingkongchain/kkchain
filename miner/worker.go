@@ -1,7 +1,6 @@
 package miner
 
 import (
-	"fmt"
 	"math/big"
 	"sync"
 	"sync/atomic"
@@ -14,6 +13,9 @@ import (
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
 
+	"fmt"
+	"github.com/invin/kkchain/core/vm"
+	"github.com/invin/kkchain/params"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -22,6 +24,8 @@ type context struct {
 	header   *types.Header
 	txs      []*types.Transaction
 	receipts []*types.Receipt
+	tcount   int           // tx count in cycle
+	gasPool  *core.GasPool // available gas used to pack transactions
 }
 
 // task contains all information for consensus engine sealing and result submitting.
@@ -33,6 +37,7 @@ type task struct {
 }
 
 type worker struct {
+	config  *params.ChainConfig
 	startCh chan struct{}
 	quitCh  chan struct{}
 	miner   common.Address
@@ -41,7 +46,6 @@ type worker struct {
 
 	mu *sync.RWMutex // The lock used to protect the coinbase and extra fields
 
-	//TODO: blockchain impl ChainReader interface
 	chain  *core.BlockChain
 	txpool *core.TxPool
 	engine consensus.Engine
@@ -58,10 +62,15 @@ type worker struct {
 
 	taskCh   chan *task
 	resultCh chan *task
+
+	snapshotMu    *sync.RWMutex // The lock used to protect the block snapshot and state snapshot
+	snapshotBlock *types.Block
+	snapshotState *state.StateDB
 }
 
-func newWorker(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *worker {
+func newWorker(config *params.ChainConfig, bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine) *worker {
 	w := &worker{
+		config:      config,
 		startCh:     make(chan struct{}, 1),
 		quitCh:      make(chan struct{}),
 		mu:          &sync.RWMutex{},
@@ -72,6 +81,7 @@ func newWorker(bc *core.BlockChain, txpool *core.TxPool, engine consensus.Engine
 		chainHeadCh: make(chan core.ChainHeadEvent),
 		taskCh:      make(chan *task),
 		resultCh:    make(chan *task),
+		snapshotMu:  &sync.RWMutex{},
 	}
 
 	// Subscribe events from tx pool
@@ -133,6 +143,25 @@ func (w *worker) stop() {
 // isRunning returns an indicator whether worker is running or not.
 func (w *worker) isRunning() bool {
 	return atomic.LoadInt32(&w.running) == 1
+}
+
+// pending returns the pending state and corresponding block.
+func (w *worker) pending() (*types.Block, *state.StateDB) {
+	// return a snapshot to avoid contention on currentMu mutex
+	w.snapshotMu.RLock()
+	defer w.snapshotMu.RUnlock()
+	if w.snapshotState == nil {
+		return nil, nil
+	}
+	return w.snapshotBlock, w.snapshotState.Copy()
+}
+
+// pendingBlock returns pending block.
+func (w *worker) pendingBlock() *types.Block {
+	// return a snapshot to avoid contention on currentMu mutex
+	w.snapshotMu.RLock()
+	defer w.snapshotMu.RUnlock()
+	return w.snapshotBlock
 }
 
 // close terminates all background threads maintained by the worker and cleans up buffered channels.
@@ -251,6 +280,8 @@ func (w *worker) commitTask() {
 	}
 
 	//apply txs and get block TODO: commit txs and apply
+	w.commitTransactions(txs, w.miner)
+
 	// Deep copy receipts here to avoid interaction between different tasks.
 	receipts := make([]*types.Receipt, len(w.currentCtx.receipts))
 	for i, l := range w.currentCtx.receipts {
@@ -267,6 +298,7 @@ func (w *worker) commitTask() {
 	}
 
 	//commit new task
+	w.updateSnapshot()
 	w.taskCh <- &task{block: block, state: s, receipts: receipts, createdAt: time.Now()}
 
 }
@@ -333,11 +365,68 @@ func (w *worker) currentContext(parent *types.Block, header *types.Header) error
 	ctx := &context{
 		state:  state,
 		header: header,
+		tcount: 0,
 	}
 
 	// Keep track of transactions which return errors so they can be removed
 	w.currentCtx = ctx
 	return nil
+}
+
+// updateSnapshot updates pending snapshot block and state.
+// Note this function assumes the current variable is thread safe.
+func (w *worker) updateSnapshot() {
+	w.snapshotMu.Lock()
+	defer w.snapshotMu.Unlock()
+
+	w.snapshotBlock = types.NewBlock(
+		w.currentCtx.header,
+		w.currentCtx.txs,
+		w.currentCtx.receipts,
+	)
+
+	w.snapshotState = w.currentCtx.state.Copy()
+}
+
+func (w *worker) commitTransactions(txs types.Transactions, coinbase common.Address) bool {
+	if w.currentCtx == nil {
+		return false
+	}
+
+	if w.currentCtx.gasPool == nil {
+		w.currentCtx.gasPool = new(core.GasPool).AddGas(w.currentCtx.header.GasLimit)
+	}
+
+	for _, tx := range txs {
+		// If we don't have enough gas for any further transactions then we're done
+		if w.currentCtx.gasPool.Gas() < params.TxGas {
+			log.WithFields(log.Fields{"have": w.currentCtx.gasPool, "want": params.TxGas}).Debug("Not enough gas for further transactions")
+			break
+		}
+
+		// Start executing the transaction
+		w.currentCtx.state.Prepare(tx.Hash(), common.Hash{}, w.currentCtx.tcount)
+		_, err := w.commitTransaction(tx, coinbase)
+		if err == nil {
+			w.currentCtx.tcount++
+		}
+	}
+
+	return true
+}
+
+func (w *worker) commitTransaction(tx *types.Transaction, coinbase common.Address) ([]*types.Log, error) {
+	snap := w.currentCtx.state.Snapshot()
+
+	receipt, _, err := core.ApplyTransaction(w.config, w.chain, &coinbase, w.currentCtx.gasPool, w.currentCtx.state, w.currentCtx.header, tx, &w.currentCtx.header.GasUsed, vm.Config{})
+	if err != nil {
+		w.currentCtx.state.RevertToSnapshot(snap)
+		return nil, err
+	}
+	w.currentCtx.txs = append(w.currentCtx.txs, tx)
+	w.currentCtx.receipts = append(w.currentCtx.receipts, receipt)
+
+	return receipt.Logs, nil
 }
 
 func (w *worker) blockinfo(desc string, block *types.Block) {

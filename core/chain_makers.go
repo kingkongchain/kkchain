@@ -1,4 +1,3 @@
-
 package core
 
 import (
@@ -11,8 +10,9 @@ import (
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 	// "github.com/invin/kkchain/core/vm"
-	"github.com/invin/kkchain/storage"
+	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/params"
+	"github.com/invin/kkchain/storage"
 )
 
 // BlockGen creates blocks for testing.
@@ -158,12 +158,12 @@ func GenerateChain(config *params.ChainConfig, parent *types.Block, engine conse
 	genblock := func(i int, parent *types.Block, statedb *state.StateDB) (*types.Block, types.Receipts) {
 		// TODO(karalabe): This is needed for clique, which depends on multiple blocks.
 		// It's nonetheless ugly to spin up a blockchain here. Get rid of this somehow.
-		blockchain, _ := NewBlockChain(db, engine)
+		blockchain, _ := NewBlockChain(config, vm.Config{}, db, engine)
 		// defer blockchain.Stop()
 
 		b := &BlockGen{i: i, parent: parent, chain: blocks, chainReader: blockchain, statedb: statedb, config: config, engine: engine}
 		b.header = makeHeader(b.chainReader, parent, statedb, b.engine)
-		
+
 		// Execute any user modifications to the block and finalize it
 		if gen != nil {
 			gen(i, b)
@@ -211,13 +211,13 @@ func makeHeader(chain consensus.ChainReader, parent *types.Block, state *state.S
 	}
 
 	return &types.Header{
-		StateRoot:       state.IntermediateRoot(false),
+		StateRoot:  state.IntermediateRoot(false),
 		ParentHash: parent.Hash(),
 		// Coinbase:   parent.Coinbase(),
 		Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
-		GasLimit:  5000,
-		Number:   new(big.Int).Add(parent.Number(), common.Big1),
-		Time:     time,
+		GasLimit:   5000,
+		Number:     new(big.Int).Add(parent.Number(), common.Big1),
+		Time:       time,
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/storage"
 
+	"github.com/invin/kkchain/core/vm"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -61,13 +62,15 @@ func New(cfg *config.Config) (*Node, error) {
 		engine:      createConsensusEngine(cfg),
 	}
 
-	node.blockchain, err = core.NewBlockChain(chainDb, node.engine)
+	vmConfig := vm.Config{EnablePreimageRecording: false}
+
+	node.blockchain, err = core.NewBlockChain(chainConfig, vmConfig, chainDb, node.engine)
 	if err != nil {
 		return nil, err
 	}
 
 	node.txPool = core.NewTxPool()
-	node.miner = miner.New(node.blockchain, node.txPool, node.engine)
+	node.miner = miner.New(chainConfig, node.blockchain, node.txPool, node.engine)
 
 	node.network = impl.NewNetwork(cfg.Network, cfg.Dht, node.blockchain)
 
