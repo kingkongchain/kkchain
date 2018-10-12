@@ -48,7 +48,6 @@ type StateTransition struct {
 // Message represents a message sent to a contract.
 type Message interface {
 	From() common.Address
-	//FromFrontier() (common.Address, error)
 	To() *common.Address
 
 	GasPrice() *big.Int
@@ -171,7 +170,8 @@ func (st *StateTransition) TransitionDb() (ret []byte, usedGas uint64, failed bo
 	}
 	msg := st.msg
 	sender := vm.AccountRef(msg.From())
-	//homestead := st.evm.ChainConfig().IsHomestead(st.evm.BlockNumber)
+
+	// if the receiver of tx is nil, it means to create contract
 	contractCreation := msg.To() == nil
 
 	// Pay intrinsic gas

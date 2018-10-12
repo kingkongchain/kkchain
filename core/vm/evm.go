@@ -27,10 +27,7 @@ type (
 // run runs the given contract and takes care of running precompiles with a fallback to the byte code interpreter.
 func run(evm *EVM, contract *Contract, input []byte) ([]byte, error) {
 	if contract.CodeAddr != nil {
-		precompiles := PrecompiledContractsHomestead
-		//if evm.ChainConfig().IsByzantium(evm.BlockNumber) {
-		//	precompiles = PrecompiledContractsByzantium
-		//}
+		precompiles := PrecompiledContracts
 		if p := precompiles[*contract.CodeAddr]; p != nil {
 			return RunPrecompiledContract(p, input, contract)
 		}
@@ -115,11 +112,10 @@ type EVM struct {
 // only ever be used *once*.
 func NewEVM(ctx Context, statedb StateDB, chainConfig *params.ChainConfig, vmConfig Config) *EVM {
 	evm := &EVM{
-		Context:     ctx,
-		StateDB:     statedb,
-		vmConfig:    vmConfig,
-		chainConfig: chainConfig,
-		//chainRules:   chainConfig.Rules(ctx.BlockNumber),
+		Context:      ctx,
+		StateDB:      statedb,
+		vmConfig:     vmConfig,
+		chainConfig:  chainConfig,
 		interpreters: make([]Interpreter, 1),
 	}
 
@@ -163,10 +159,7 @@ func (evm *EVM) Call(caller ContractRef, addr common.Address, input []byte, gas 
 		snapshot = evm.StateDB.Snapshot()
 	)
 	if !evm.StateDB.Exist(addr) {
-		precompiles := PrecompiledContractsHomestead
-		//if evm.ChainConfig().IsByzantium(evm.BlockNumber) {
-		//	precompiles = PrecompiledContractsByzantium
-		//}
+		precompiles := PrecompiledContracts
 		if precompiles[addr] == nil && value.Sign() == 0 {
 			// Calling a non existing account, don't do anything, but ping the tracer
 			if evm.vmConfig.Debug && evm.depth == 0 {
@@ -346,9 +339,7 @@ func (evm *EVM) create(caller ContractRef, code []byte, gas uint64, value *big.I
 	// Create a new account on the state
 	snapshot := evm.StateDB.Snapshot()
 	evm.StateDB.CreateAccount(address)
-	//if evm.ChainConfig().IsEIP158(evm.BlockNumber) {
-	//	evm.StateDB.SetNonce(address, 1)
-	//}
+	evm.StateDB.SetNonce(address, 1)
 	evm.Transfer(evm.StateDB, caller.Address(), address, value)
 
 	// initialise a new contract and set the code that is to be used by the

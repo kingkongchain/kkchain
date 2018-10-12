@@ -656,9 +656,7 @@ func opCreate(pc *uint64, interpreter *EVMInterpreter, contract *Contract, memor
 		input        = memory.Get(offset.Int64(), size.Int64())
 		gas          = contract.Gas
 	)
-	//if interpreter.evm.ChainConfig().IsEIP150(interpreter.evm.BlockNumber) {
-	//	gas -= gas / 64
-	//}
+
 	gas -= gas / 64
 
 	contract.UseGas(gas)
