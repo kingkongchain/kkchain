@@ -20,6 +20,7 @@ import (
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
 
+	"github.com/invin/kkchain/core/vm"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -64,7 +65,9 @@ func main() {
 	}).Info("Initialised chain configuration")
 
 	engine := newEngine(fakeFlag)
-	chain, _ := core.NewBlockChain(chainDb, engine)
+
+	vmConfig := vm.Config{EnablePreimageRecording: false}
+	chain, _ := core.NewBlockChain(chainConfig, vmConfig, chainDb, engine)
 
 	go func() {
 		ticker := time.NewTicker(8 * time.Second)
@@ -77,7 +80,7 @@ func main() {
 	go doP2P(chain, *port, *keypath)
 
 	if *mineFlag == "true" {
-		doMiner(chain, engine)
+		doMiner(chainConfig, chain, engine)
 	}
 
 	select {}
@@ -135,12 +138,12 @@ func newEngine(fakeFlag *string) consensus.Engine {
 
 }
 
-func doMiner(chain *core.BlockChain, engine consensus.Engine) {
+func doMiner(chainConfig *params.ChainConfig, chain *core.BlockChain, engine consensus.Engine) {
 	defer engine.Close()
 
 	txpool := core.NewTxPool()
 
-	miner := miner.New(chain, txpool, engine)
+	miner := miner.New(chainConfig, chain, txpool, engine)
 	defer miner.Close()
 
 	miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))

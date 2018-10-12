@@ -110,7 +110,6 @@ func makeConfig(ctx *cli.Context) *config.Config {
 	return &cfg
 }
 
-//TODO: build node service
 func makeNode(cfg *config.Config) (*node.Node, error) {
 	return node.New(cfg)
 }

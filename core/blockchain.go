@@ -18,6 +18,8 @@ import (
 	"github.com/invin/kkchain/event"
 	"github.com/invin/kkchain/storage"
 
+	"github.com/invin/kkchain/core/vm"
+	"github.com/invin/kkchain/params"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -47,11 +49,13 @@ type Config struct {
 //currently for testing purposes
 //TODO：the subsequent need to really implement blockchain
 type BlockChain struct {
-	mu      *sync.RWMutex
-	wg      sync.WaitGroup // chain processing wait group for shutting down
-	procmu  *sync.RWMutex  // block processor lock
-	chainmu *sync.RWMutex  // blockchain insertion lock
-	config  Config
+	mu          *sync.RWMutex
+	wg          sync.WaitGroup // chain processing wait group for shutting down
+	procmu      *sync.RWMutex  // block processor lock
+	chainmu     *sync.RWMutex  // blockchain insertion lock
+	config      Config
+	chainConfig *params.ChainConfig // Chain & network configuration
+	vmConfig    vm.Config
 
 	engine    consensus.Engine
 	validator Validator // block and state validator interface
@@ -85,7 +89,7 @@ type BlockChain struct {
 	newBlockFeed event.Feed
 }
 
-func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, error) {
+func NewBlockChain(chainConfig *params.ChainConfig, vmConfig vm.Config, db storage.Database, engine consensus.Engine) (*BlockChain, error) {
 
 	headerCache, _ := lru.New(headerCacheLimit)
 	blockCache, _ := lru.New(blockCacheLimit)
@@ -94,6 +98,8 @@ func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, e
 	numberCache, _ := lru.New(numberCacheLimit)
 
 	bc := &BlockChain{
+		chainConfig:  chainConfig,
+		vmConfig:     vmConfig,
 		mu:           &sync.RWMutex{},
 		procmu:       &sync.RWMutex{},
 		chainmu:      &sync.RWMutex{},
@@ -108,7 +114,7 @@ func NewBlockChain(db storage.Database, engine consensus.Engine) (*BlockChain, e
 	}
 
 	bc.SetValidator(NewBlockValidator(bc))
-	bc.SetProcessor(NewStateProcessor(bc))
+	bc.SetProcessor(NewStateProcessor(chainConfig, bc))
 	//init genesis block
 	bc.genesisBlock = bc.GetBlockByNumber(0)
 	if bc.genesisBlock == nil {
@@ -866,7 +872,7 @@ func (bc *BlockChain) insertChain(chain types.Blocks) (int, []interface{}, []*ty
 		}
 
 		// Process block using the parent state as reference point.
-		receipts, logs, usedGas, err := bc.processor.Process(block, state)
+		receipts, logs, usedGas, err := bc.processor.Process(block, state, bc.vmConfig)
 		if err != nil {
 			return i, events, coalescedLogs, err
 		}
