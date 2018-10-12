@@ -1,14 +1,15 @@
 package config
 
 import (
-	"github.com/invin/kkchain/storage"
-	"github.com/invin/kkchain/storage/memdb"
-	"github.com/invin/kkchain/storage/rocksdb"
-	"github.com/spf13/viper"
 	"os"
 	"os/user"
 	"path/filepath"
 	"runtime"
+
+	"github.com/invin/kkchain/storage"
+	"github.com/invin/kkchain/storage/memdb"
+	"github.com/invin/kkchain/storage/rocksdb"
+	"github.com/spf13/viper"
 )
 
 var (
@@ -96,11 +97,11 @@ func DefaultDataDir() string {
 	home := homeDir()
 	if home != "" {
 		if runtime.GOOS == "darwin" {
-			return filepath.Join(home, "Library", "Ethereum")
+			return filepath.Join(home, "Library", "KKchain")
 		} else if runtime.GOOS == "windows" {
-			return filepath.Join(home, "AppData", "Roaming", "Ethereum")
+			return filepath.Join(home, "AppData", "Roaming", "KKchain")
 		} else {
-			return filepath.Join(home, ".ethereum")
+			return filepath.Join(home, ".kkchain")
 		}
 	}
 	// As we cannot guess a stable location, return empty and handle later
