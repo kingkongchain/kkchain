@@ -5,6 +5,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/invin/kkchain/api"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/consensus"
@@ -14,6 +15,7 @@ import (
 	"github.com/invin/kkchain/p2p"
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
+	"github.com/invin/kkchain/rpc"
 	"github.com/invin/kkchain/storage"
 
 	"github.com/invin/kkchain/core/vm"
@@ -117,4 +119,24 @@ func createConsensusEngine(cfg *config.Config) consensus.Engine {
 	powconfig.PowMode = pow.ModeNormal
 
 	return pow.New(powconfig, nil)
+}
+
+// startRPC is a helper method to start all the various RPC endpoint during node
+// startup. It's not meant to be called at any time afterwards as it makes certain
+// assumptions about the state of the node.
+func (n *Node) startRPC() error {
+
+	// TODO: make apiBackend
+	apis := api.GetAPIs(new(api.Backend))
+
+	// TODO: register apis
+	n.startInProc(apis)
+
+	// TODO: use http to start rpc
+
+	return nil
+}
+
+func (n *Node) startInProc(apis []rpc.API) error {
+	return nil
 }
