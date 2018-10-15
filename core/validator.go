@@ -31,7 +31,7 @@ func (v *BlockValidator) ValidateBody(block *types.Block) error {
 		}
 		return consensus.ErrPrunedAncestor
 	}
-	// Header validity is known at this point, check the uncles and transactions
+	// Header validity is known at this point, check the transactions
 	header := block.Header()
 	if hash := types.DeriveSha(block.Transactions()); hash != header.TxRoot {
 		return fmt.Errorf("transaction root hash mismatch: have %x, want %x", hash, header.TxRoot)

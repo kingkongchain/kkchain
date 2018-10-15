@@ -26,7 +26,7 @@ type Context struct {
 }
 
 // ChainReader defines a small collection of methods needed to access the local
-// blockchain during header and/or uncle verification.
+// blockchain during header verification.
 type ChainReader interface {
 
 	// CurrentHeader retrieves the current header from the local chain.

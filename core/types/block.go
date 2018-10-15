@@ -285,7 +285,7 @@ func (b *Block) WithSeal(header *Header) *Block {
 	}
 }
 
-// WithBody returns a new block with the given transaction and uncle contents.
+// WithBody returns a new block with the given transaction.
 func (b *Block) WithBody(transactions []*Transaction) *Block {
 	block := &Block{
 		Head: CopyHeader(b.Head),
