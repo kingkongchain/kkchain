@@ -1,19 +1,146 @@
 package core
 
 import (
+	"errors"
+	"fmt"
+	"sync"
+
+	"time"
+
+	"math/big"
+
+	"sort"
+
 	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
-	"sync"
+	"github.com/invin/kkchain/params"
+	log "github.com/sirupsen/logrus"
+	"gopkg.in/karalabe/cookiejar.v2/collections/prque"
 )
 
+const (
+	// chainHeadChanSize is the size of channel listening to ChainHeadEvent.
+	chainHeadChanSize = 10
+)
+
+var (
+	// ErrInvalidSender is returned if the transaction contains an invalid signature.
+	ErrInvalidSender = errors.New("invalid sender")
+
+	// ErrNonceTooLow is returned if the nonce of a transaction is lower than the
+	// one present in the local chain.
+	ErrNonceTooLow = errors.New("nonce too low")
+
+	// ErrUnderpriced is returned if a transaction's gas price is below the minimum
+	// configured for the transaction pool.
+	ErrUnderpriced = errors.New("transaction underpriced")
+
+	// ErrReplaceUnderpriced is returned if a transaction is attempted to be replaced
+	// with a different one without the required price bump.
+	ErrReplaceUnderpriced = errors.New("replacement transaction underpriced")
+
+	// ErrInsufficientFunds is returned if the total cost of executing a transaction
+	// is higher than the balance of the user's account.
+	ErrInsufficientFunds = errors.New("insufficient funds for gas * price + value")
+
+	// ErrIntrinsicGas is returned if the transaction is specified to use less gas
+	// than required to start the invocation.
+	ErrIntrinsicGas = errors.New("intrinsic gas too low")
+
+	// ErrGasLimit is returned if a transaction's requested gas limit exceeds the
+	// maximum allowance of the current block.
+	ErrGasLimit = errors.New("exceeds block gas limit")
+
+	// ErrNegativeValue is a sanity error to ensure noone is able to specify a
+	// transaction with a negative value.
+	ErrNegativeValue = errors.New("negative value")
+
+	// ErrOversizedData is returned if the input data of a transaction is greater
+	// than some meaningful limit a user might use. This is not a consensus error
+	// making the transaction invalid, rather a DOS protection.
+	ErrOversizedData = errors.New("oversized data")
+)
+
+var (
+	evictionInterval    = time.Minute     // Time interval to check for evictable transactions
+	statsReportInterval = 8 * time.Second // Time interval to report transaction pool stats
+)
+
+// TxStatus is the current status of a transaction as seen by the pool.
+type TxStatus uint
+
+const (
+	TxStatusUnknown TxStatus = iota
+	TxStatusQueued
+	TxStatusPending
+	TxStatusIncluded
+)
+
+// TxPoolConfig are the configuration parameters of the transaction pool.
+type TxPoolConfig struct {
+	Locals    []common.Address // Addresses that should be treated by default as local
+	NoLocals  bool             // Whether local transaction handling should be disabled
+	Journal   string           // Journal of local transactions to survive node restarts
+	Rejournal time.Duration    // Time interval to regenerate the local transaction journal
+
+	PriceLimit uint64 // Minimum gas price to enforce for acceptance into the pool
+	PriceBump  uint64 // Minimum price bump percentage to replace an already existing transaction (nonce)
+
+	AccountSlots uint64 // Number of executable transaction slots guaranteed per account
+	GlobalSlots  uint64 // Maximum number of executable transaction slots for all accounts
+	AccountQueue uint64 // Maximum number of non-executable transaction slots permitted per account
+	GlobalQueue  uint64 // Maximum number of non-executable transaction slots for all accounts
+
+	Lifetime time.Duration // Maximum amount of time non-executable transaction are queued
+}
+
+// DefaultTxPoolConfig contains the default configurations for the transaction
+// pool.
+var DefaultTxPoolConfig = TxPoolConfig{
+	Journal:   "transactions.rlp",
+	Rejournal: time.Hour,
+
+	PriceLimit: 1,
+	PriceBump:  10,
+
+	AccountSlots: 16,
+	GlobalSlots:  4096,
+	AccountQueue: 64,
+	GlobalQueue:  1024,
+
+	Lifetime: 3 * time.Hour,
+}
+
 type TxPool struct {
-	txFeed event.Feed
-	scope  event.SubscriptionScope
+	config       TxPoolConfig
+	chainconfig  *params.ChainConfig
+	chain        BlockChain
+	gasPrice     *big.Int
+	txFeed       event.Feed
+	scope        event.SubscriptionScope
+	chainHeadCh  chan ChainHeadEvent
+	chainHeadSub event.Subscription
+	signer       types.Signer
+	mu           *sync.RWMutex
 
-	mu *sync.RWMutex
+	currentState  *state.StateDB      // Current state in the blockchain head
+	pendingState  *state.ManagedState // Pending state tracking virtual nonces
+	currentMaxGas uint64              // Current gas limit for transaction caps
 
-	pending map[common.Address]*txList // All currently processable transactions
+	locals  *accountSet // Set of local transaction to exempt from eviction rules
+	journal *txJournal  // Journal of local transaction to back up to disk
+
+	pending map[common.Address]*txList   // All currently processable transactions
+	queue   map[common.Address]*txList   // Queued but non-processable transactions
+	beats   map[common.Address]time.Time // Last heartbeat from each known account
+	all     *txLookup                    // All transactions to allow lookups
+	priced  *txPricedList                // All transactions sorted by price
+
+	wg sync.WaitGroup // for shutdown sync
+
+	homestead bool
 }
 
 func NewTxPool() *TxPool {
@@ -44,4 +171,605 @@ func (pool *TxPool) Pending() (map[common.Address]types.Transactions, int, error
 // starts sending event to the given channel.
 func (pool *TxPool) SubscribeTxsEvent(ch chan<- types.Transactions) event.Subscription {
 	return pool.scope.Track(pool.txFeed.Subscribe(ch))
+}
+
+// AddLocal enqueues a single transaction into the pool if it is valid, marking
+// the sender as a local one in the mean time, ensuring it goes around the local
+// pricing constraints.
+func (pool *TxPool) AddLocal(tx *types.Transaction) error {
+	return pool.addTx(tx, !pool.config.NoLocals)
+}
+
+// addTx enqueues a single transaction into the pool if it is valid.
+func (pool *TxPool) addTx(tx *types.Transaction, local bool) error {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	// Try to inject the transaction and update any state
+	replace, err := pool.add(tx, local)
+	if err != nil {
+		return err
+	}
+	// If we added a new transaction, run promotion checks and return
+	if !replace {
+		from, _ := types.Sender(pool.signer, tx) // already validated
+		pool.promoteExecutables([]common.Address{from})
+	}
+	return nil
+}
+
+// addTxs attempts to queue a batch of transactions if they are valid.
+func (pool *TxPool) addTxs(txs []*types.Transaction, local bool) []error {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	return pool.addTxsLocked(txs, local)
+}
+
+// addTxsLocked attempts to queue a batch of transactions if they are valid,
+// whilst assuming the transaction pool lock is already held.
+func (pool *TxPool) addTxsLocked(txs []*types.Transaction, local bool) []error {
+	// Add the batch of transaction, tracking the accepted ones
+	dirty := make(map[common.Address]struct{})
+	errs := make([]error, len(txs))
+
+	for i, tx := range txs {
+		var replace bool
+		if replace, errs[i] = pool.add(tx, local); errs[i] == nil && !replace {
+			from, _ := types.Sender(pool.signer, tx) // already validated
+			dirty[from] = struct{}{}
+		}
+	}
+	// Only reprocess the internal state if something was actually added
+	if len(dirty) > 0 {
+		addrs := make([]common.Address, 0, len(dirty))
+		for addr := range dirty {
+			addrs = append(addrs, addr)
+		}
+		pool.promoteExecutables(addrs)
+	}
+	return errs
+}
+
+// Get returns a transaction if it is contained in the pool
+// and nil otherwise.
+func (pool *TxPool) Get(hash common.Hash) *types.Transaction {
+	return pool.all.Get(hash)
+}
+
+// State returns the virtual managed state of the transaction pool.
+func (pool *TxPool) State() *state.ManagedState {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	return pool.pendingState
+}
+
+// Stats retrieves the current pool stats, namely the number of pending and the
+// number of queued (non-executable) transactions.
+func (pool *TxPool) Stats() (int, int) {
+	pool.mu.RLock()
+	defer pool.mu.RUnlock()
+
+	return pool.stats()
+}
+
+// stats retrieves the current pool stats, namely the number of pending and the
+// number of queued (non-executable) transactions.
+func (pool *TxPool) stats() (int, int) {
+	pending := 0
+	for _, list := range pool.pending {
+		pending += list.Len()
+	}
+	queued := 0
+	for _, list := range pool.queue {
+		queued += list.Len()
+	}
+	return pending, queued
+}
+
+// Content retrieves the data content of the transaction pool, returning all the
+// pending as well as queued transactions, grouped by account and sorted by nonce.
+func (pool *TxPool) Content() (map[common.Address]types.Transactions, map[common.Address]types.Transactions) {
+	pool.mu.Lock()
+	defer pool.mu.Unlock()
+
+	pending := make(map[common.Address]types.Transactions)
+	for addr, list := range pool.pending {
+		pending[addr] = list.Flatten()
+	}
+	queued := make(map[common.Address]types.Transactions)
+	for addr, list := range pool.queue {
+		queued[addr] = list.Flatten()
+	}
+	return pending, queued
+}
+
+// promoteExecutables moves transactions that have become processable from the
+// future queue to the set of pending transactions. During this process, all
+// invalidated transactions (low nonce, low balance) are deleted.
+func (pool *TxPool) promoteExecutables(accounts []common.Address) {
+	// Track the promoted transactions to broadcast them at once
+	var promoted []*types.Transaction
+
+	// Gather all the accounts potentially needing updates
+	if accounts == nil {
+		accounts = make([]common.Address, 0, len(pool.queue))
+		for addr := range pool.queue {
+			accounts = append(accounts, addr)
+		}
+	}
+	// Iterate over all accounts and promote any executable transactions
+	for _, addr := range accounts {
+		list := pool.queue[addr]
+		if list == nil {
+			continue // Just in case someone calls with a non existing account
+		}
+
+		// Drop all transactions that are deemed too old (low nonce)
+		for _, tx := range list.Forward(pool.currentState.GetNonce(addr)) {
+			hash := tx.Hash()
+			log.Debugf("Removed old queued transaction,hash: %s", hash.String())
+			pool.all.Remove(hash)
+			pool.priced.Removed()
+		}
+
+		// Drop all transactions that are too costly (low balance or out of gas)
+		drops, _ := list.Filter(pool.currentState.GetBalance(addr), pool.currentMaxGas)
+		for _, tx := range drops {
+			hash := tx.Hash()
+			log.Debugf("Removed unpayable queued transaction,hash: %s", hash.String())
+			pool.all.Remove(hash)
+			pool.priced.Removed()
+		}
+		// Gather all executable transactions and promote them
+		for _, tx := range list.Ready(pool.pendingState.GetNonce(addr)) {
+			hash := tx.Hash()
+			if pool.promoteTx(addr, hash, tx) {
+				log.Debugf("Promoting queued transaction,hash: %s", hash.String())
+				promoted = append(promoted, tx)
+			}
+		}
+		// Drop all transactions over the allowed limit
+		if !pool.locals.contains(addr) {
+			for _, tx := range list.Cap(int(pool.config.AccountQueue)) {
+				hash := tx.Hash()
+				pool.all.Remove(hash)
+				pool.priced.Removed()
+				log.Debugf("Removed cap-exceeding queued transaction,hash: %s", hash.String())
+			}
+		}
+		// Delete the entire queue entry if it became empty.
+		if list.Empty() {
+			delete(pool.queue, addr)
+		}
+	}
+	// Notify subsystem for new promoted transactions.
+	if len(promoted) > 0 {
+		go pool.txFeed.Send(NewTxsEvent{promoted})
+	}
+	// If the pending limit is overflown, start equalizing allowances
+	pending := uint64(0)
+	for _, list := range pool.pending {
+		pending += uint64(list.Len())
+	}
+	if pending > pool.config.GlobalSlots {
+		// Assemble a spam order to penalize large transactors first
+		spammers := prque.New()
+		for addr, list := range pool.pending {
+			// Only evict transactions from high rollers
+			if !pool.locals.contains(addr) && uint64(list.Len()) > pool.config.AccountSlots {
+				spammers.Push(addr, float32(list.Len()))
+			}
+		}
+		// Gradually drop transactions from offenders
+		offenders := []common.Address{}
+		for pending > pool.config.GlobalSlots && !spammers.Empty() {
+			// Retrieve the next offender if not local address
+			offender, _ := spammers.Pop()
+			offenders = append(offenders, offender.(common.Address))
+
+			// Equalize balances until all the same or below threshold
+			if len(offenders) > 1 {
+				// Calculate the equalization threshold for all current offenders
+				threshold := pool.pending[offender.(common.Address)].Len()
+
+				// Iteratively reduce all offenders until below limit or threshold reached
+				for pending > pool.config.GlobalSlots && pool.pending[offenders[len(offenders)-2]].Len() > threshold {
+					for i := 0; i < len(offenders)-1; i++ {
+						list := pool.pending[offenders[i]]
+						for _, tx := range list.Cap(list.Len() - 1) {
+							// Drop the transaction from the global pools too
+							hash := tx.Hash()
+							pool.all.Remove(hash)
+							pool.priced.Removed()
+
+							// Update the account nonce to the dropped transaction
+							if nonce := tx.Nonce(); pool.pendingState.GetNonce(offenders[i]) > nonce {
+								pool.pendingState.SetNonce(offenders[i], nonce)
+							}
+							log.Debugf("Removed fairness-exceeding pending transaction,hash: %s", hash.String())
+						}
+						pending--
+					}
+				}
+			}
+		}
+		// If still above threshold, reduce to limit or min allowance
+		if pending > pool.config.GlobalSlots && len(offenders) > 0 {
+			for pending > pool.config.GlobalSlots && uint64(pool.pending[offenders[len(offenders)-1]].Len()) > pool.config.AccountSlots {
+				for _, addr := range offenders {
+					list := pool.pending[addr]
+					for _, tx := range list.Cap(list.Len() - 1) {
+						// Drop the transaction from the global pools too
+						hash := tx.Hash()
+						pool.all.Remove(hash)
+						pool.priced.Removed()
+
+						// Update the account nonce to the dropped transaction
+						if nonce := tx.Nonce(); pool.pendingState.GetNonce(addr) > nonce {
+							pool.pendingState.SetNonce(addr, nonce)
+						}
+						log.Debugf("Removed fairness-exceeding pending transaction,hash: %s", hash.String())
+					}
+					pending--
+				}
+			}
+		}
+	}
+	// If we've queued more transactions than the hard limit, drop oldest ones
+	queued := uint64(0)
+	for _, list := range pool.queue {
+		queued += uint64(list.Len())
+	}
+	if queued > pool.config.GlobalQueue {
+		// Sort all accounts with queued transactions by heartbeat
+		addresses := make(addressesByHeartbeat, 0, len(pool.queue))
+		for addr := range pool.queue {
+			if !pool.locals.contains(addr) { // don't drop locals
+				addresses = append(addresses, addressByHeartbeat{addr, pool.beats[addr]})
+			}
+		}
+		sort.Sort(addresses)
+
+		// Drop transactions until the total is below the limit or only locals remain
+		for drop := queued - pool.config.GlobalQueue; drop > 0 && len(addresses) > 0; {
+			addr := addresses[len(addresses)-1]
+			list := pool.queue[addr.address]
+
+			addresses = addresses[:len(addresses)-1]
+
+			// Drop all transactions if they are less than the overflow
+			if size := uint64(list.Len()); size <= drop {
+				for _, tx := range list.Flatten() {
+					pool.removeTx(tx.Hash(), true)
+				}
+				drop -= size
+				continue
+			}
+			// Otherwise drop only last few transactions
+			txs := list.Flatten()
+			for i := len(txs) - 1; i >= 0 && drop > 0; i-- {
+				pool.removeTx(txs[i].Hash(), true)
+				drop--
+			}
+		}
+	}
+}
+
+// promoteTx adds a transaction to the pending (processable) list of transactions
+// and returns whether it was inserted or an older was better.
+//
+// Note, this method assumes the pool lock is held!
+func (pool *TxPool) promoteTx(addr common.Address, hash common.Hash, tx *types.Transaction) bool {
+	// Try to insert the transaction into the pending queue
+	if pool.pending[addr] == nil {
+		pool.pending[addr] = newTxList(true)
+	}
+	list := pool.pending[addr]
+
+	inserted, old := list.Add(tx, pool.config.PriceBump)
+	if !inserted {
+		// An older transaction was better, discard this
+		pool.all.Remove(hash)
+		pool.priced.Removed()
+		return false
+	}
+	// Otherwise discard any previous transaction and mark this
+	if old != nil {
+		pool.all.Remove(old.Hash())
+		pool.priced.Removed()
+	}
+	// Failsafe to work around direct pending inserts (tests)
+	if pool.all.Get(hash) == nil {
+		pool.all.Add(tx)
+		pool.priced.Put(tx)
+	}
+	// Set the potentially new pending nonce and notify any subsystems of the new tx
+	pool.beats[addr] = time.Now()
+	pool.pendingState.SetNonce(addr, tx.Nonce()+1)
+
+	return true
+}
+
+// removeTx removes a single transaction from the queue, moving all subsequent
+// transactions back to the future queue.
+func (pool *TxPool) removeTx(hash common.Hash, outofbound bool) {
+	// Fetch the transaction we wish to delete
+	tx := pool.all.Get(hash)
+	if tx == nil {
+		return
+	}
+	addr, _ := types.Sender(pool.signer, tx) // already validated during insertion
+
+	// Remove it from the list of known transactions
+	pool.all.Remove(hash)
+	if outofbound {
+		pool.priced.Removed()
+	}
+	// Remove the transaction from the pending lists and reset the account nonce
+	if pending := pool.pending[addr]; pending != nil {
+		if removed, invalids := pending.Remove(tx); removed {
+			// If no more pending transactions are left, remove the list
+			if pending.Empty() {
+				delete(pool.pending, addr)
+				delete(pool.beats, addr)
+			}
+			// Postpone any invalidated transactions
+			for _, tx := range invalids {
+				pool.enqueueTx(tx.Hash(), tx)
+			}
+			// Update the account nonce if needed
+			if nonce := tx.Nonce(); pool.pendingState.GetNonce(addr) > nonce {
+				pool.pendingState.SetNonce(addr, nonce)
+			}
+			return
+		}
+	}
+	// Transaction is in the future queue
+	if future := pool.queue[addr]; future != nil {
+		future.Remove(tx)
+		if future.Empty() {
+			delete(pool.queue, addr)
+		}
+	}
+}
+
+// enqueueTx inserts a new transaction into the non-executable transaction queue.
+//
+// Note, this method assumes the pool lock is held!
+func (pool *TxPool) enqueueTx(hash common.Hash, tx *types.Transaction) (bool, error) {
+	// Try to insert the transaction into the future queue
+	from, _ := types.Sender(pool.signer, tx) // already validated
+	if pool.queue[from] == nil {
+		pool.queue[from] = newTxList(false)
+	}
+	inserted, old := pool.queue[from].Add(tx, pool.config.PriceBump)
+	if !inserted {
+		// An older transaction was better, discard this
+		return false, ErrReplaceUnderpriced
+	}
+	// Discard any previous transaction and mark this
+	if old != nil {
+		pool.all.Remove(old.Hash())
+		pool.priced.Removed()
+	}
+	if pool.all.Get(hash) == nil {
+		pool.all.Add(tx)
+		pool.priced.Put(tx)
+	}
+	return old != nil, nil
+}
+
+// validateTx checks whether a transaction is valid according to the consensus
+// rules and adheres to some heuristic limits of the local node (price and size).
+func (pool *TxPool) validateTx(tx *types.Transaction, local bool) error {
+	// Heuristic limit, reject transactions over 32KB to prevent DOS attacks
+	if tx.Size() > 32*1024 {
+		return ErrOversizedData
+	}
+	// Transactions can't be negative. This may never happen using RLP decoded
+	// transactions but may occur if you create a transaction using the RPC.
+	if tx.Value().Sign() < 0 {
+		return ErrNegativeValue
+	}
+	// Ensure the transaction doesn't exceed the current block limit gas.
+	if pool.currentMaxGas < tx.GasLimit() {
+		return ErrGasLimit
+	}
+	// Make sure the transaction is signed properly
+	from, err := types.Sender(pool.signer, tx)
+	if err != nil {
+		return ErrInvalidSender
+	}
+	// Drop non-local transactions under our own minimal accepted gas price
+	local = local || pool.locals.contains(from) // account may be local even if the transaction arrived from the network
+	if !local && pool.gasPrice.Cmp(tx.GasPrice()) > 0 {
+		return ErrUnderpriced
+	}
+	// Ensure the transaction adheres to nonce ordering
+	if pool.currentState.GetNonce(from) > tx.Nonce() {
+		return ErrNonceTooLow
+	}
+	// Transactor should have enough funds to cover the costs
+	// cost == V + GP * GL
+	if pool.currentState.GetBalance(from).Cmp(tx.Cost()) < 0 {
+		return ErrInsufficientFunds
+	}
+	intrGas, err := IntrinsicGas(tx.Data(), tx.Receiver() == nil)
+	if err != nil {
+		return err
+	}
+	if tx.GasLimit() < intrGas {
+		return ErrIntrinsicGas
+	}
+	return nil
+}
+
+// journalTx adds the specified transaction to the local disk journal if it is
+// deemed to have been sent from a local account.
+func (pool *TxPool) journalTx(from common.Address, tx *types.Transaction) {
+	// Only journal if it's enabled and the transaction is local
+	if pool.journal == nil || !pool.locals.contains(from) {
+		return
+	}
+	if err := pool.journal.insert(tx); err != nil {
+		log.Warnf("Failed to journal local transaction,err: %v", err)
+	}
+}
+
+// add validates a transaction and inserts it into the non-executable queue for
+// later pending promotion and execution. If the transaction is a replacement for
+// an already pending or queued one, it overwrites the previous and returns this
+// so outer code doesn't uselessly call promote.
+//
+// If a newly added transaction is marked as local, its sending account will be
+// whitelisted, preventing any associated transaction from being dropped out of
+// the pool due to pricing constraints.
+func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
+	// If the transaction is already known, discard it
+	hash := tx.Hash()
+	if pool.all.Get(hash) != nil {
+		log.Debugf("Discarding already known transaction,hash: %s", hash.String())
+		return false, fmt.Errorf("known transaction: %s", hash.String())
+	}
+	// If the transaction fails basic validation, discard it
+	if err := pool.validateTx(tx, local); err != nil {
+		log.WithFields(log.Fields{
+			"hash": hash.String(),
+			"err":  err,
+		}).Error("Discarding invalid transaction")
+		return false, err
+	}
+	// If the transaction pool is full, discard underpriced transactions
+	if uint64(pool.all.Count()) >= pool.config.GlobalSlots+pool.config.GlobalQueue {
+		// If the new transaction is underpriced, don't accept it
+		if !local && pool.priced.Underpriced(tx, pool.locals) {
+			log.WithFields(log.Fields{
+				"hash":  hash.String(),
+				"price": tx.GasPrice().Uint64(),
+			}).Warning("Discarding underpriced transaction")
+			return false, ErrUnderpriced
+		}
+		// New transaction is better than our worse ones, make room for it
+		drop := pool.priced.Discard(pool.all.Count()-int(pool.config.GlobalSlots+pool.config.GlobalQueue-1), pool.locals)
+		for _, tx := range drop {
+			log.WithFields(log.Fields{
+				"hash":  tx.Hash().String(),
+				"price": tx.GasPrice().Uint64(),
+			}).Warning("Discarding freshly underpriced transaction")
+			pool.removeTx(tx.Hash(), false)
+		}
+	}
+	// If the transaction is replacing an already pending one, do directly
+	from, _ := types.Sender(pool.signer, tx) // already validated
+	if list := pool.pending[from]; list != nil && list.Overlaps(tx) {
+		// Nonce already pending, check if required price bump is met
+		inserted, old := list.Add(tx, pool.config.PriceBump)
+		if !inserted {
+			return false, ErrReplaceUnderpriced
+		}
+		// New transaction is better, replace old one
+		if old != nil {
+			pool.all.Remove(old.Hash())
+			pool.priced.Removed()
+		}
+		pool.all.Add(tx)
+		pool.priced.Put(tx)
+		pool.journalTx(from, tx)
+
+		log.WithFields(log.Fields{
+			"hash": hash.String(),
+			"from": from.String(),
+			"to":   tx.Receiver().String(),
+		}).Info("Pooled new executable transaction")
+
+		// We've directly injected a replacement transaction, notify subsystems
+		go pool.txFeed.Send(NewTxsEvent{types.Transactions{tx}})
+
+		return old != nil, nil
+	}
+	// New transaction isn't replacing a pending one, push into queue
+	replace, err := pool.enqueueTx(hash, tx)
+	if err != nil {
+		return false, err
+	}
+	// Mark local addresses and journal local transactions
+	if local {
+		if !pool.locals.contains(from) {
+			log.Info("Setting new local account", "address", from)
+			pool.locals.add(from)
+		}
+	}
+	pool.journalTx(from, tx)
+
+	log.WithFields(log.Fields{
+		"hash": hash.String(),
+		"from": from.String(),
+		"to":   tx.Receiver().String(),
+	}).Info("Pooled new future transaction")
+	return replace, nil
+}
+
+// addressByHeartbeat is an account address tagged with its last activity timestamp.
+type addressByHeartbeat struct {
+	address   common.Address
+	heartbeat time.Time
+}
+
+type addressesByHeartbeat []addressByHeartbeat
+
+func (a addressesByHeartbeat) Len() int           { return len(a) }
+func (a addressesByHeartbeat) Less(i, j int) bool { return a[i].heartbeat.Before(a[j].heartbeat) }
+func (a addressesByHeartbeat) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+
+// accountSet is simply a set of addresses to check for existence, and a signer
+// capable of deriving addresses from transactions.
+type accountSet struct {
+	accounts map[common.Address]struct{}
+	signer   types.Signer
+	cache    *[]common.Address
+}
+
+// newAccountSet creates a new address set with an associated signer for sender
+// derivations.
+func newAccountSet(signer types.Signer) *accountSet {
+	return &accountSet{
+		accounts: make(map[common.Address]struct{}),
+		signer:   signer,
+	}
+}
+
+// contains checks if a given address is contained within the set.
+func (as *accountSet) contains(addr common.Address) bool {
+	_, exist := as.accounts[addr]
+	return exist
+}
+
+// containsTx checks if the sender of a given tx is within the set. If the sender
+// cannot be derived, this method returns false.
+func (as *accountSet) containsTx(tx *types.Transaction) bool {
+	if addr, err := types.Sender(as.signer, tx); err == nil {
+		return as.contains(addr)
+	}
+	return false
+}
+
+// add inserts a new address into the set to track.
+func (as *accountSet) add(addr common.Address) {
+	as.accounts[addr] = struct{}{}
+	as.cache = nil
+}
+
+// flatten returns the list of addresses within this set, also caching it for later
+// reuse. The returned slice should not be changed!
+func (as *accountSet) flatten() []common.Address {
+	if as.cache == nil {
+		accounts := make([]common.Address, 0, len(as.accounts))
+		for account := range as.accounts {
+			accounts = append(accounts, account)
+		}
+		as.cache = &accounts
+	}
+	return *as.cache
 }

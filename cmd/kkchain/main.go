@@ -90,6 +90,7 @@ func makeConfig(ctx *cli.Context) *config.Config {
 		GeneralConfig: config.DefaultGeneralConfig,
 		Network:       &config.DefaultNetworkConfig,
 		Dht:           &config.DefaultDhtConfig,
+		Api:           &config.DefaultAPIConfig,
 	}
 
 	// Load config file.

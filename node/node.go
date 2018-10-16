@@ -2,29 +2,34 @@ package node
 
 import (
 	"fmt"
+	"net"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/invin/kkchain/accounts"
 	"github.com/invin/kkchain/api"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/consensus"
 	"github.com/invin/kkchain/consensus/pow"
 	"github.com/invin/kkchain/core"
+	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/miner"
 	"github.com/invin/kkchain/p2p"
+	"github.com/invin/kkchain/p2p/dht"
 	"github.com/invin/kkchain/p2p/impl"
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/rpc"
 	"github.com/invin/kkchain/storage"
-
-	"github.com/invin/kkchain/core/vm"
 	log "github.com/sirupsen/logrus"
 )
 
 type Node struct {
 	stop chan struct{} // Channel to wait for termination notifications
 	lock *sync.RWMutex
+
+	accman *accounts.Manager
 
 	config      *config.Config
 	chainConfig *params.ChainConfig
@@ -35,6 +40,11 @@ type Node struct {
 	txPool     *core.TxPool
 	miner      *miner.Miner
 	network    p2p.Network
+
+	httpEndpoint  string
+	httpListener  net.Listener
+	httpHandler   *rpc.Server
+	inprocHandler *rpc.Server
 }
 
 func New(cfg *config.Config) (*Node, error) {
@@ -79,6 +89,31 @@ func New(cfg *config.Config) (*Node, error) {
 	return node, nil
 }
 
+// AccountManager retrieves the account manager used by the protocol stack.
+func (n *Node) AccountManager() *accounts.Manager {
+	return n.accman
+}
+
+func (n *Node) ChainDb() storage.Database {
+	return n.chainDb
+}
+
+func (n *Node) Miner() *miner.Miner {
+	return n.miner
+}
+
+func (n *Node) BlockChain() *core.BlockChain {
+	return n.blockchain
+}
+
+func (n *Node) TxPool() *core.TxPool {
+	return n.txPool
+}
+
+func (n *Node) ChainConfig() *params.ChainConfig {
+	return n.chainConfig
+}
+
 func (n *Node) Start() {
 
 	go func() {
@@ -101,6 +136,10 @@ func (n *Node) Start() {
 		n.miner.Start()
 	}
 
+	err := n.startRPC()
+	if err != nil {
+		log.Errorf("failed to start rpc service,err: %v", err)
+	}
 }
 
 func (n *Node) Stop() {
@@ -111,6 +150,8 @@ func (n *Node) Stop() {
 	n.miner.Close()
 
 	n.chainDb.Close()
+	n.stopHTTP()
+	n.stopInProc()
 }
 
 func createConsensusEngine(cfg *config.Config) consensus.Engine {
@@ -125,18 +166,102 @@ func createConsensusEngine(cfg *config.Config) consensus.Engine {
 // startup. It's not meant to be called at any time afterwards as it makes certain
 // assumptions about the state of the node.
 func (n *Node) startRPC() error {
+	apiBackend := &APIBackend{
+		n,
+		nil,
+	}
+	gpoParams := api.DefaultGasOracleConfig
+	apiBackend.SetGasOracle(api.NewOracle(apiBackend, gpoParams))
+	apis := api.GetAPIs(apiBackend)
 
-	// TODO: make apiBackend
-	apis := api.GetAPIs(new(api.Backend))
+	err := n.startInProc(apis)
+	if err != nil {
+		return err
+	}
 
-	// TODO: register apis
-	n.startInProc(apis)
+	modules := []string{"eth"}
+	cors := []string{""}
+	vhosts := []string{"localhost"}
 
-	// TODO: use http to start rpc
+	endpoint := ""
+	netaddr, err := dht.ToNetAddr(n.config.Api.RpcAddr)
+	if err != nil {
+		log.WithFields(log.Fields{
+			"rpcAddr": n.config.Api.RpcAddr,
+			"error":   err,
+		}).Error("failed to convert multiaddr to net addr")
+		endpoint = "127.0.0.1:8545"
+	} else {
+		endpoint = netaddr.String()
+	}
+
+	err = n.startHTTP(endpoint, apis, modules, cors, vhosts, rpc.DefaultHTTPTimeouts)
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
+// startInProc initializes an in-process RPC endpoint.
 func (n *Node) startInProc(apis []rpc.API) error {
+	// Register all the APIs exposed by the services
+	handler := rpc.NewServer()
+	for _, api := range apis {
+		if err := handler.RegisterName(api.Namespace, api.Service); err != nil {
+			return err
+		}
+		log.WithFields(log.Fields{
+			"service":   api.Service,
+			"namespace": api.Namespace,
+		}).Debug("InProc registered")
+	}
+	n.inprocHandler = handler
 	return nil
+}
+
+// startHTTP initializes and starts the HTTP RPC endpoint.
+func (n *Node) startHTTP(endpoint string, apis []rpc.API, modules []string, cors []string, vhosts []string, timeouts rpc.HTTPTimeouts) error {
+
+	// Short circuit if the HTTP endpoint isn't being exposed
+	if endpoint == "" {
+		return nil
+	}
+	listener, handler, err := rpc.StartHTTPEndpoint(endpoint, apis, modules, cors, vhosts, timeouts)
+	if err != nil {
+		return err
+	}
+	log.WithFields(log.Fields{
+		"url":    fmt.Sprintf("http://%s", endpoint),
+		"cors":   strings.Join(cors, ","),
+		"vhosts": strings.Join(vhosts, ","),
+	}).Info("HTTP endpoint opened")
+
+	// All listeners booted successfully
+	n.httpEndpoint = endpoint
+	n.httpListener = listener
+	n.httpHandler = handler
+
+	return nil
+}
+
+// stopInProc terminates the in-process RPC endpoint.
+func (n *Node) stopInProc() {
+	if n.inprocHandler != nil {
+		n.inprocHandler.Stop()
+		n.inprocHandler = nil
+	}
+}
+
+// stopHTTP terminates the HTTP RPC endpoint.
+func (n *Node) stopHTTP() {
+	if n.httpListener != nil {
+		n.httpListener.Close()
+		n.httpListener = nil
+		log.Infof("HTTP endpoint closed,url: %s", fmt.Sprintf("http://%s", n.httpEndpoint))
+	}
+	if n.httpHandler != nil {
+		n.httpHandler.Stop()
+		n.httpHandler = nil
+	}
 }

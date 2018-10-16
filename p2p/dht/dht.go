@@ -243,7 +243,10 @@ func (dht *DHT) SyncRouteTable() {
 
 		pid, err := ParsePeerAddr(addr)
 		if err != nil {
-			log.Errorf("connect with error: %v", err)
+			log.WithFields(log.Fields{
+				"addr":  addr,
+				"error": err,
+			}).Error("failed to parse peer addr for dht")
 			continue
 		}
 
