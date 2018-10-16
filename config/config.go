@@ -32,6 +32,11 @@ var (
 		Mine: true,
 		Type: "pow",
 	}
+
+	DefaultAPIConfig = ApiConfig{
+		Rpc:     true,
+		RpcAddr: "/ip4/127.0.0.1/tcp/8545",
+	}
 )
 
 // kkchain global configurations.
@@ -44,6 +49,8 @@ type Config struct {
 	Dht *DhtConfig `mapstructure:"dht"`
 
 	Consensus *ConsensusConfig `mapstructure:"consensus"`
+
+	Api *ApiConfig `mapstructure:"api"`
 }
 
 // General settings
@@ -73,6 +80,11 @@ type DhtConfig struct {
 type ConsensusConfig struct {
 	Mine bool   `mapstructure:"mine"`
 	Type string `mapstructure:"type"`
+}
+
+type ApiConfig struct {
+	Rpc     bool   `mapstructure:"rpc"`
+	RpcAddr string `mapstructure:"rpcaddr"`
 }
 
 func LoadConfig(file string, cfg *Config) error {

@@ -84,6 +84,20 @@ var (
 		ConsensusMineFlag,
 		ConsensusTypeFlag,
 	}
+
+	RPCEnabledFlag = cli.BoolFlag{
+		Name:  "api.rpc",
+		Usage: "Enable the HTTP-RPC server",
+	}
+	RPCListenAddrFlag = cli.StringFlag{
+		Name:  "api.rpcaddr",
+		Usage: "HTTP-RPC server listening interface",
+	}
+
+	APIFlags = []cli.Flag{
+		RPCEnabledFlag,
+		RPCListenAddrFlag,
+	}
 )
 
 func generalConfig(ctx *cli.Context, cfg *config.GeneralConfig) error {
@@ -136,5 +150,15 @@ func consensusConfig(ctx *cli.Context, cfg *config.ConsensusConfig) {
 
 	if ctx.GlobalIsSet(ConsensusMineFlag.Name) {
 		cfg.Type = ctx.GlobalString(ConsensusTypeFlag.Name)
+	}
+}
+
+func apiConfig(ctx *cli.Context, cfg *config.ApiConfig) {
+	if ctx.GlobalIsSet(RPCEnabledFlag.Name) {
+		cfg.Rpc = ctx.GlobalBool(RPCEnabledFlag.Name)
+	}
+
+	if ctx.GlobalIsSet(RPCListenAddrFlag.Name) {
+		cfg.RpcAddr = ctx.GlobalString(RPCListenAddrFlag.Name)
 	}
 }

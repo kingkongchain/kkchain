@@ -37,6 +37,7 @@ func main() {
 	app.Flags = append(app.Flags, NetworkFlags...)
 	app.Flags = append(app.Flags, DhtFlags...)
 	app.Flags = append(app.Flags, ConsensusFlags...)
+	app.Flags = append(app.Flags, APIFlags...)
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 
@@ -106,6 +107,7 @@ func makeConfig(ctx *cli.Context) *config.Config {
 	networkConfig(ctx, cfg.Network)
 	dhtConfig(ctx, &cfg)
 	consensusConfig(ctx, cfg.Consensus)
+	apiConfig(ctx, cfg.Api)
 
 	return &cfg
 }

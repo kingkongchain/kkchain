@@ -30,3 +30,10 @@ privatekey = "node1.key"
 # Bucket size of routine table
 bucketsize = 2
 
+##### api configuration options #####
+[api]
+# Enable rpc
+rpc = true
+
+# Address to listen for incoming connections
+rpcaddr = "/ip4/127.0.0.1/tcp/8545"
