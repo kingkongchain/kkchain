@@ -8,6 +8,7 @@ import (
 	"github.com/invin/kkchain/api"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/core/rawdb"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/rpc"
@@ -80,4 +81,27 @@ func (b *APIBackend) GetPoolNonce(ctx context.Context, addr common.Address) (uin
 // ChainConfig returns the active chain configuration.
 func (b *APIBackend) ChainConfig() *params.ChainConfig {
 	return b.kkchain.ChainConfig()
+}
+
+func (b *APIBackend) GetTd(blockHash common.Hash) *big.Int {
+	return b.kkchain.blockchain.GetTdByHash(blockHash)
+}
+
+func (b *APIBackend) StateAndHeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*state.StateDB, *types.Header, error) {
+	// Pending state is only known by the miner
+	if blockNr == rpc.PendingBlockNumber {
+		block, state := b.kkchain.Miner().Pending()
+		return state, block.Header(), nil
+	}
+	// Otherwise resolve the block number and return its state
+	header, err := b.HeaderByNumber(ctx, blockNr)
+	if header == nil || err != nil {
+		return nil, nil, err
+	}
+	stateDb, err := b.kkchain.BlockChain().StateAt(header.StateRoot)
+	return stateDb, header, err
+}
+
+func (b *APIBackend) GetBlock(ctx context.Context, hash common.Hash) (*types.Block, error) {
+	return b.kkchain.blockchain.GetBlockByHash(hash), nil
 }

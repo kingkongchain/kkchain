@@ -4,6 +4,7 @@ import (
 	"sync/atomic"
 
 	"github.com/invin/kkchain/consensus"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/event"
 
@@ -120,4 +121,9 @@ func (m *Miner) SetMiner(addr common.Address) {
 // change between multiple method calls
 func (self *Miner) PendingBlock() *types.Block {
 	return self.worker.pendingBlock()
+}
+
+// Pending returns the currently pending block and associated state.
+func (self *Miner) Pending() (*types.Block, *state.StateDB) {
+	return self.worker.pending()
 }

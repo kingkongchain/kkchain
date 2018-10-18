@@ -7,6 +7,7 @@ import (
 
 	"github.com/invin/kkchain/accounts"
 	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/rpc"
@@ -25,6 +26,9 @@ type Backend interface {
 	HeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*types.Header, error)
 	BlockByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*types.Block, error)
 	GetReceipts(ctx context.Context, blockHash common.Hash) (types.Receipts, error)
+	StateAndHeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*state.StateDB, *types.Header, error)
+	GetBlock(ctx context.Context, blockHash common.Hash) (*types.Block, error)
+	GetTd(blockHash common.Hash) *big.Int
 
 	// TxPool API
 	SendTx(ctx context.Context, signedTx *types.Transaction) error
@@ -41,6 +45,21 @@ func GetAPIs(apiBackend Backend) []rpc.API {
 			Version:   "1.0",
 			Service:   NewPublicTransactionPoolAPI(apiBackend, nonceLock),
 			Public:    true,
+		}, {
+			Namespace: "eth",
+			Version:   "1.0",
+			Service:   NewPublicBlockChainAPI(apiBackend),
+			Public:    true,
+		}, {
+			Namespace: "eth",
+			Version:   "1.0",
+			Service:   NewPublicAccountAPI(apiBackend.AccountManager()),
+			Public:    true,
+		}, {
+			Namespace: "personal",
+			Version:   "1.0",
+			Service:   NewPrivateAccountAPI(apiBackend, nonceLock),
+			Public:    false,
 		},
 	}
 }
