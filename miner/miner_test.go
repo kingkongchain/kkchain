@@ -1,19 +1,21 @@
 package miner
 
 import (
-	"github.com/invin/kkchain/common"
-	"github.com/invin/kkchain/consensus/pow"
-	"github.com/invin/kkchain/core"
-	"github.com/invin/kkchain/params"
 	"os"
 	"os/user"
 	"path/filepath"
 	"testing"
 
+	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/consensus/pow"
+	"github.com/invin/kkchain/core"
+	"github.com/invin/kkchain/params"
+
+	"time"
+
 	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/core/vm"
 	logger "github.com/sirupsen/logrus"
-	"time"
 )
 
 func TestMiner_Start(t *testing.T) {
@@ -68,7 +70,7 @@ func TestMine(t *testing.T) {
 	vmConfig := vm.Config{EnablePreimageRecording: false}
 	chain, _ := core.NewBlockChain(chainConfig, vmConfig, chainDb, engine)
 
-	txpool := core.NewTxPool()
+	txpool := core.NewTxPool(core.DefaultTxPoolConfig, chainConfig, chain)
 
 	miner := New(chainConfig, chain, txpool, engine)
 	defer miner.Close()

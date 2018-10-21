@@ -141,7 +141,7 @@ func newEngine(fakeFlag *string) consensus.Engine {
 func doMiner(chainConfig *params.ChainConfig, chain *core.BlockChain, engine consensus.Engine) {
 	defer engine.Close()
 
-	txpool := core.NewTxPool()
+	txpool := core.NewTxPool(core.DefaultTxPoolConfig, chainConfig, chain)
 
 	miner := miner.New(chainConfig, chain, txpool, engine)
 	defer miner.Close()

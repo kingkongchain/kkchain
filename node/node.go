@@ -7,7 +7,10 @@ import (
 	"sync"
 	"time"
 
+	"os"
+
 	"github.com/invin/kkchain/accounts"
+	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/api"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/config"
@@ -29,10 +32,10 @@ type Node struct {
 	stop chan struct{} // Channel to wait for termination notifications
 	lock *sync.RWMutex
 
-	accman *accounts.Manager
-
-	config      *config.Config
-	chainConfig *params.ChainConfig
+	accman            *accounts.Manager
+	ephemeralKeystore string // if non-empty, the key directory that will be removed by Stop
+	config            *config.Config
+	chainConfig       *params.ChainConfig
 
 	chainDb    storage.Database // Block chain database
 	engine     consensus.Engine
@@ -47,7 +50,7 @@ type Node struct {
 	inprocHandler *rpc.Server
 }
 
-func New(cfg *config.Config) (*Node, error) {
+func New(cfg *config.Config, keydir string, ks *keystore.KeyStore) (*Node, error) {
 
 	chainDb, err := config.OpenDatabase(cfg, "chaindata")
 	if err != nil {
@@ -81,10 +84,16 @@ func New(cfg *config.Config) (*Node, error) {
 		return nil, err
 	}
 
-	node.txPool = core.NewTxPool()
+	node.txPool = core.NewTxPool(core.DefaultTxPoolConfig, chainConfig, node.blockchain)
 	node.miner = miner.New(chainConfig, node.blockchain, node.txPool, node.engine)
 
 	node.network = impl.NewNetwork(cfg.Network, cfg.Dht, node.blockchain)
+
+	// Assemble the account manager and supported backends
+	backends := []accounts.Backend{
+		ks,
+	}
+	node.accman, node.ephemeralKeystore = accounts.NewManager(backends...), keydir
 
 	return node, nil
 }
@@ -152,6 +161,11 @@ func (n *Node) Stop() {
 	n.chainDb.Close()
 	n.stopHTTP()
 	n.stopInProc()
+
+	// Remove the keystore if it was created ephemerally.
+	if n.ephemeralKeystore != "" {
+		os.RemoveAll(n.ephemeralKeystore)
+	}
 }
 
 func createConsensusEngine(cfg *config.Config) consensus.Engine {
