@@ -193,7 +193,9 @@ func (n *Node) startRPC() error {
 		return err
 	}
 
-	modules := []string{"eth"}
+	// if you want to use personal_newAccount、personal_unlockAccount ...,
+	// you should add personal inferface into modules when process startHTTP.
+	modules := []string{"eth", "personal"}
 	cors := []string{""}
 	vhosts := []string{"localhost"}
 
