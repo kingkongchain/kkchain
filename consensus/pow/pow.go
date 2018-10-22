@@ -77,7 +77,7 @@ func (ethash *Ethash) Finalize(chain consensus.ChainReader, state *state.StateDB
 	// Accumulate any block rewards and commit the final state root
 	accumulateRewards(state, header)
 
-	header.StateRoot = state.IntermediateRoot(false)
+	header.StateRoot = state.IntermediateRoot(true)
 
 	return nil
 }

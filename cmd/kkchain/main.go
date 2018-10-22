@@ -15,6 +15,7 @@ import (
 	"github.com/invin/kkchain/accounts"
 	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/config"
+	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/node"
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -128,9 +129,11 @@ func makeNode(cfg *config.Config) (*node.Node, error) {
 
 	fmt.Printf("\ncreated a new account: %s\n", acc.Address.String())
 	node, err := node.New(cfg, keydir, ks)
-	statedb, err := node.BlockChain().State()
-	statedb.SetBalance(acc.Address, new(big.Int).SetInt64(1e9))
+	currentBlock := node.BlockChain().CurrentBlock()
+	statedb, err := state.New(currentBlock.StateRoot(), state.NewDatabase(node.ChainDb()))
+	statedb.AddBalance(acc.Address, new(big.Int).SetInt64(1e10))
 	statedb.SetNonce(acc.Address, 1)
+	currentBlock.Header().StateRoot = statedb.IntermediateRoot(true)
 
 	return node, err
 }
