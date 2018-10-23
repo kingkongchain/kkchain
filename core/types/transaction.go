@@ -75,7 +75,7 @@ func newTransaction(nonce uint64, to *common.Address, amount *big.Int, gasLimit 
 
 // ChainId returns which chain id this transaction was signed for (if at all)
 func (tx *Transaction) ChainId() *big.Int {
-	return tx.data.V
+	return deriveChainId(tx.data.V)
 }
 
 // Protected returns whether the transaction is protected from replay protection.

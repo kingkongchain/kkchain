@@ -98,7 +98,9 @@ func (s InitialSigner) Sender(tx *Transaction) (common.Address, error) {
 		return common.Address{}, ErrInvalidChainId
 	}
 
-	return recoverPlain(s.Hash(tx), tx.data.R, tx.data.S, tx.data.V)
+	V := new(big.Int).Sub(tx.data.V, s.chainIdMul)
+	V.Sub(V, big8)
+	return recoverPlain(s.Hash(tx), tx.data.R, tx.data.S, V)
 }
 
 // WithSignature returns a new transaction with the given signature. This signature
@@ -109,10 +111,12 @@ func (s InitialSigner) SignatureValues(tx *Transaction, sig []byte) (R, S, V *bi
 	}
 	R = new(big.Int).SetBytes(sig[:32])
 	S = new(big.Int).SetBytes(sig[32:64])
+	V = new(big.Int).SetBytes([]byte{sig[64] + 27})
 
 	// set s.chainId to the V of this tx
 	if s.chainId.Sign() != 0 {
-		V = new(big.Int).Set(s.chainId)
+		V = big.NewInt(int64(sig[64] + 35))
+		V.Add(V, s.chainIdMul)
 	}
 	return R, S, V, nil
 }
@@ -135,7 +139,7 @@ func recoverPlain(sighash common.Hash, R, S, Vb *big.Int) (common.Address, error
 	if Vb.BitLen() > 8 {
 		return common.Address{}, ErrInvalidSig
 	}
-	V := byte(Vb.Uint64())
+	V := byte(Vb.Uint64() - 27)
 	if !crypto.ValidateSignatureValues(V, R, S) {
 		return common.Address{}, ErrInvalidSig
 	}

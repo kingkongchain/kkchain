@@ -288,7 +288,7 @@ func (pool *TxPool) Pending() (map[common.Address]types.Transactions, int, error
 
 // SubscribeNewTxsEvent registers a subscription of NewTxsEvent and
 // starts sending event to the given channel.
-func (pool *TxPool) SubscribeTxsEvent(ch chan<- types.Transactions) event.Subscription {
+func (pool *TxPool) SubscribeNewTxsEvent(ch chan<- NewTxsEvent) event.Subscription {
 	return pool.scope.Track(pool.txFeed.Subscribe(ch))
 }
 
