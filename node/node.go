@@ -41,6 +41,7 @@ type Node struct {
 	blockchain *core.BlockChain
 	txPool     *core.TxPool
 	miner      *miner.Miner
+	coinbase   common.Address
 	network    p2p.Network
 
 	httpEndpoint  string
@@ -75,6 +76,8 @@ func New(cfg *config.Config) (*Node, error) {
 		chainDb:     chainDb,
 		engine:      createConsensusEngine(cfg),
 	}
+
+	node.coinbase = common.HexToAddress(cfg.Consensus.Coinbase)
 
 	vmConfig := vm.Config{EnablePreimageRecording: false}
 
@@ -123,6 +126,37 @@ func (n *Node) ChainConfig() *params.ChainConfig {
 	return n.chainConfig
 }
 
+func (n *Node) Coinbase() (eb common.Address, err error) {
+	n.lock.RLock()
+	coinbase := n.coinbase
+	n.lock.RUnlock()
+
+	if coinbase != (common.Address{}) {
+		return coinbase, nil
+	}
+	if wallets := n.AccountManager().Wallets(); len(wallets) > 0 {
+		if accounts := wallets[0].Accounts(); len(accounts) > 0 {
+			coinbase := accounts[0].Address
+
+			n.lock.Lock()
+			n.coinbase = coinbase
+			n.lock.Unlock()
+
+			log.Info("Coinbase automatically configured", "address", coinbase)
+			return coinbase, nil
+		}
+	}
+	return common.Address{}, fmt.Errorf("etherbase must be explicitly specified")
+}
+
+func (n *Node) SetCoinbase(coinbase common.Address) {
+	n.lock.Lock()
+	n.coinbase = coinbase
+	n.lock.Unlock()
+
+	n.miner.SetMiner(coinbase)
+}
+
 func (n *Node) Start() {
 
 	go func() {
@@ -141,7 +175,10 @@ func (n *Node) Start() {
 	}()
 
 	if n.config.Consensus.Mine {
-		n.miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
+		coinbase, err := n.Coinbase()
+		if err == nil {
+			n.miner.SetMiner(coinbase)
+		}
 		n.miner.Start()
 	}
 

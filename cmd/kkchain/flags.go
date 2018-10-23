@@ -89,9 +89,15 @@ var (
 		Value: "pow",
 	}
 
+	ConsensusCoinbaseFlag = cli.StringFlag{
+		Name:  "consensus.coinbase",
+		Usage: "Coinbase of consensus",
+	}
+
 	ConsensusFlags = []cli.Flag{
 		ConsensusMineFlag,
 		ConsensusTypeFlag,
+		ConsensusCoinbaseFlag,
 	}
 
 	RPCEnabledFlag = cli.BoolFlag{
@@ -180,10 +186,13 @@ func consensusConfig(ctx *cli.Context, cfg *config.ConsensusConfig) {
 	if ctx.GlobalIsSet(ConsensusMineFlag.Name) {
 		cfg.Mine = ctx.GlobalBool(ConsensusMineFlag.Name)
 	}
-	//log.Fatalf("cfg.Mine", cfg.Mine)
+
 	if ctx.GlobalIsSet(ConsensusMineFlag.Name) {
 		cfg.Type = ctx.GlobalString(ConsensusTypeFlag.Name)
-		//log.Fatalf("cfg.Mine", cfg.Mine)
+	}
+
+	if ctx.GlobalIsSet(ConsensusCoinbaseFlag.Name) {
+		cfg.Type = ctx.GlobalString(ConsensusCoinbaseFlag.Name)
 	}
 
 }

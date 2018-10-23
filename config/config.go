@@ -90,8 +90,9 @@ type DhtConfig struct {
 }
 
 type ConsensusConfig struct {
-	Mine bool   `mapstructure:"mine"`
-	Type string `mapstructure:"type"`
+	Mine     bool   `mapstructure:"mine"`
+	Type     string `mapstructure:"type"`
+	Coinbase string `mapstructure:"coinbase"`
 }
 
 type ApiConfig struct {

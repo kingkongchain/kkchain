@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"os/signal"
 	"sort"
@@ -11,8 +10,6 @@ import (
 	"syscall"
 	//"time"
 
-	"github.com/invin/kkchain/accounts"
-	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/node"
 
@@ -129,33 +126,4 @@ func makeNode(cfg *config.Config) (*node.Node, error) {
 	node, err := node.New(cfg)
 
 	return node, err
-}
-
-func makeAccountManager() (*accounts.Manager, string, error) {
-	scryptN, scryptP := keystore.LightScryptN, keystore.LightScryptP
-
-	keydir, err := ioutil.TempDir("", "kkchain-keystore")
-	if err != nil {
-		return nil, "", err
-	}
-	if err = os.MkdirAll(keydir, 0700); err != nil {
-		return nil, "", err
-	}
-	// Assemble the account manager and supported backends
-	backends := []accounts.Backend{
-		keystore.NewKeyStore(keydir, scryptN, scryptP),
-	}
-	return accounts.NewManager(backends...), keydir, nil
-}
-
-func makeKeystore() (*keystore.KeyStore, string, error) {
-	scryptN, scryptP := keystore.LightScryptN, keystore.LightScryptP
-	keydir, err := ioutil.TempDir("", "kkchain-keystore")
-	if err != nil {
-		return nil, "", err
-	}
-	if err = os.MkdirAll(keydir, 0700); err != nil {
-		return nil, "", err
-	}
-	return keystore.NewKeyStore(keydir, scryptN, scryptP), keydir, nil
 }

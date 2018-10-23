@@ -2,7 +2,7 @@
 # For more information, see https://github.com/toml-lang/toml
 
 ##### general config options #####
-datadir = "./data/node1"
+datadir = "data"
 
 ##### advanced configuration options #####
 
@@ -12,6 +12,8 @@ datadir = "./data/node1"
 mine = true
 # Consensus type
 type = "pow"
+
+#coinbase = "37fc69c6e656f94a142ce8878c045704a5cd6520"
 
 ##### p2p server configuration options #####
 [network]
@@ -39,4 +41,4 @@ rpc = true
 rpcaddr = "/ip4/127.0.0.1/tcp/8545"
 
 [acc]
-keystoredir = "keystore"
+
