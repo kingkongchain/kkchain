@@ -11,13 +11,11 @@ import (
 	"syscall"
 	//"time"
 
-	"math/big"
-
 	"github.com/invin/kkchain/accounts"
 	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/config"
-	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/node"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
@@ -45,10 +43,13 @@ func main() {
 	app.Flags = append(app.Flags, DhtFlags...)
 	app.Flags = append(app.Flags, ConsensusFlags...)
 	app.Flags = append(app.Flags, APIFlags...)
+	app.Flags = append(app.Flags, AccountFlags...)
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 
-	app.Commands = []cli.Command{}
+	app.Commands = []cli.Command{
+		accountCommand,
+	}
 
 	sort.Sort(cli.CommandsByName(app.Commands))
 
@@ -97,8 +98,9 @@ func makeConfig(ctx *cli.Context) *config.Config {
 		GeneralConfig: config.DefaultGeneralConfig,
 		Network:       &config.DefaultNetworkConfig,
 		Dht:           &config.DefaultDhtConfig,
-		Api:           &config.DefaultAPIConfig,
 		Consensus:     &config.DefaultConsensusConfig,
+		Api:           &config.DefaultAPIConfig,
+		Account:       &config.AccountConfig{},
 	}
 
 	// Load config file.
@@ -117,31 +119,14 @@ func makeConfig(ctx *cli.Context) *config.Config {
 	dhtConfig(ctx, &cfg)
 	consensusConfig(ctx, cfg.Consensus)
 	apiConfig(ctx, cfg.Api)
+	accountConfig(ctx, cfg.Account)
 
 	return &cfg
 }
 
 func makeNode(cfg *config.Config) (*node.Node, error) {
 
-	// make keystore
-	ks, keydir, _ := makeKeystore()
-
-	// make account
-	acc, _ := ks.NewAccount("123")
-
-	fmt.Printf("\ncreated a new account: %s\n", acc.Address.String())
-	node, err := node.New(cfg, keydir, ks)
-	if err != nil {
-		log.Fatalf("New node error:", err)
-	}
-	currentBlock := node.BlockChain().CurrentBlock()
-	statedb, err := state.New(currentBlock.StateRoot(), state.NewDatabase(node.ChainDb()))
-	if err != nil {
-		log.Fatalf("New state error:", err)
-	}
-	statedb.AddBalance(acc.Address, new(big.Int).SetInt64(1e10))
-	statedb.SetNonce(acc.Address, 1)
-	currentBlock.Header().StateRoot = statedb.IntermediateRoot(true)
+	node, err := node.New(cfg)
 
 	return node, err
 }

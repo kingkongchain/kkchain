@@ -10,7 +10,6 @@ import (
 	"os"
 
 	"github.com/invin/kkchain/accounts"
-	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/api"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/config"
@@ -50,7 +49,7 @@ type Node struct {
 	inprocHandler *rpc.Server
 }
 
-func New(cfg *config.Config, keydir string, ks *keystore.KeyStore) (*Node, error) {
+func New(cfg *config.Config) (*Node, error) {
 
 	chainDb, err := config.OpenDatabase(cfg, "chaindata")
 	if err != nil {
@@ -91,11 +90,10 @@ func New(cfg *config.Config, keydir string, ks *keystore.KeyStore) (*Node, error
 
 	node.network = impl.NewNetwork(cfg.Network, cfg.Dht, node.blockchain)
 
-	// Assemble the account manager and supported backends
-	backends := []accounts.Backend{
-		ks,
+	node.accman, node.ephemeralKeystore, err = config.MakeAccountManager(cfg)
+	if err != nil {
+		return nil, err
 	}
-	node.accman, node.ephemeralKeystore = accounts.NewManager(backends...), keydir
 
 	return node, nil
 }
