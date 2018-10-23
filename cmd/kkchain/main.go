@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+
 	//"strconv"
 	"syscall"
 	//"time"
@@ -97,6 +98,7 @@ func makeConfig(ctx *cli.Context) *config.Config {
 		Network:       &config.DefaultNetworkConfig,
 		Dht:           &config.DefaultDhtConfig,
 		Api:           &config.DefaultAPIConfig,
+		Consensus:     &config.DefaultConsensusConfig,
 	}
 
 	// Load config file.
@@ -129,8 +131,14 @@ func makeNode(cfg *config.Config) (*node.Node, error) {
 
 	fmt.Printf("\ncreated a new account: %s\n", acc.Address.String())
 	node, err := node.New(cfg, keydir, ks)
+	if err != nil {
+		log.Fatalf("New node error:", err)
+	}
 	currentBlock := node.BlockChain().CurrentBlock()
 	statedb, err := state.New(currentBlock.StateRoot(), state.NewDatabase(node.ChainDb()))
+	if err != nil {
+		log.Fatalf("New state error:", err)
+	}
 	statedb.AddBalance(acc.Address, new(big.Int).SetInt64(1e10))
 	statedb.SetNonce(acc.Address, 1)
 	currentBlock.Header().StateRoot = statedb.IntermediateRoot(true)

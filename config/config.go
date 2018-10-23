@@ -17,11 +17,13 @@ var (
 		DataDir: DefaultDataDir(),
 	}
 
+	seeds                = []string{"89b8bb2b66a41220a9b8ba8f019c291dc69c8d9b1ee023813f9db8f8bdcd1f76@/ip4/127.0.0.1/tcp/9998"}
 	DefaultNetworkConfig = NetworkConfig{
 		Listen:     "/ip4/127.0.0.1/tcp/9998",
 		PrivateKey: "node1.key",
 		NetworkId:  1,
 		MaxPeers:   20,
+		Seeds:      seeds,
 	}
 
 	DefaultDhtConfig = DhtConfig{
@@ -29,12 +31,12 @@ var (
 	}
 
 	DefaultConsensusConfig = ConsensusConfig{
-		Mine: true,
+		Mine: false,
 		Type: "pow",
 	}
 
 	DefaultAPIConfig = ApiConfig{
-		Rpc:     true,
+		Rpc:     false,
 		RpcAddr: "/ip4/127.0.0.1/tcp/8545",
 	}
 )

@@ -3,9 +3,10 @@ package main
 import (
 	"github.com/invin/kkchain/config"
 
-	"github.com/urfave/cli"
 	"os"
 	"path/filepath"
+
+	"github.com/urfave/cli"
 )
 
 var (
@@ -147,10 +148,12 @@ func consensusConfig(ctx *cli.Context, cfg *config.ConsensusConfig) {
 	if ctx.GlobalIsSet(ConsensusMineFlag.Name) {
 		cfg.Mine = ctx.GlobalBool(ConsensusMineFlag.Name)
 	}
-
+	//log.Fatalf("cfg.Mine", cfg.Mine)
 	if ctx.GlobalIsSet(ConsensusMineFlag.Name) {
 		cfg.Type = ctx.GlobalString(ConsensusTypeFlag.Name)
+		//log.Fatalf("cfg.Mine", cfg.Mine)
 	}
+
 }
 
 func apiConfig(ctx *cli.Context, cfg *config.ApiConfig) {

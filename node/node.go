@@ -85,7 +85,9 @@ func New(cfg *config.Config, keydir string, ks *keystore.KeyStore) (*Node, error
 	}
 
 	node.txPool = core.NewTxPool(core.DefaultTxPoolConfig, chainConfig, node.blockchain)
-	node.miner = miner.New(chainConfig, node.blockchain, node.txPool, node.engine)
+	if cfg.Consensus.Mine {
+		node.miner = miner.New(chainConfig, node.blockchain, node.txPool, node.engine)
+	}
 
 	node.network = impl.NewNetwork(cfg.Network, cfg.Dht, node.blockchain)
 
@@ -136,18 +138,20 @@ func (n *Node) Start() {
 	go func() {
 		err := n.network.Start()
 		if err != nil {
-			log.Errorf("failed to start server: %s\n", err)
+			log.Fatalf("failed to start server: %s\n", err)
 		}
 	}()
 
-	n.miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 	if n.config.Consensus.Mine {
+		n.miner.SetMiner(common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"))
 		n.miner.Start()
 	}
 
-	err := n.startRPC()
-	if err != nil {
-		log.Errorf("failed to start rpc service,err: %v", err)
+	if n.config.Api.Rpc {
+		err := n.startRPC()
+		if err != nil {
+			log.Errorf("failed to start rpc service,err: %v", err)
+		}
 	}
 }
 
@@ -156,7 +160,9 @@ func (n *Node) Stop() {
 
 	n.engine.Close()
 
-	n.miner.Close()
+	if n.config.Consensus.Mine {
+		n.miner.Close()
+	}
 
 	n.chainDb.Close()
 	n.stopHTTP()
