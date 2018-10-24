@@ -105,3 +105,7 @@ func (b *APIBackend) StateAndHeaderByNumber(ctx context.Context, blockNr rpc.Blo
 func (b *APIBackend) GetBlock(ctx context.Context, hash common.Hash) (*types.Block, error) {
 	return b.kkchain.blockchain.GetBlockByHash(hash), nil
 }
+
+func (b *APIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction {
+	return b.kkchain.txPool.Get(hash)
+}

@@ -163,7 +163,7 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain *Bloc
 	}
 	pool.locals = newAccountSet(pool.signer)
 	for _, addr := range config.Locals {
-		log.Info("Setting new local account", "address", addr)
+		log.Infof("Setting new local account,address: %s", addr.String())
 		pool.locals.add(addr)
 	}
 	pool.priced = newTxPricedList(pool.all)
@@ -174,10 +174,10 @@ func NewTxPool(config TxPoolConfig, chainconfig *params.ChainConfig, chain *Bloc
 		pool.journal = newTxJournal(config.Journal)
 
 		if err := pool.journal.load(pool.AddLocals); err != nil {
-			log.Warn("Failed to load transaction journal", "err", err)
+			log.Warnf("Failed to load transaction journal,err: %v", err)
 		}
 		if err := pool.journal.rotate(pool.local()); err != nil {
-			log.Warn("Failed to rotate transaction journal", "err", err)
+			log.Warnf("Failed to rotate transaction journal,err: %v", err)
 		}
 	}
 	// Subscribe events from blockchain
@@ -235,7 +235,11 @@ func (pool *TxPool) loop() {
 			pool.mu.RUnlock()
 
 			if pending != prevPending || queued != prevQueued || stales != prevStales {
-				log.Debug("Transaction pool status report", "executable", pending, "queued", queued, "stales", stales)
+				log.WithFields(log.Fields{
+					"executable": pending,
+					"queued":     queued,
+					"stales":     stales,
+				}).Debug("Transaction pool status report")
 				prevPending, prevQueued, prevStales = pending, queued, stales
 			}
 
@@ -261,7 +265,7 @@ func (pool *TxPool) loop() {
 			if pool.journal != nil {
 				pool.mu.Lock()
 				if err := pool.journal.rotate(pool.local()); err != nil {
-					log.Warn("Failed to rotate local tx journal", "err", err)
+					log.Warnf("Failed to rotate local tx journal,err: %v", err)
 				}
 				pool.mu.Unlock()
 			}
@@ -823,7 +827,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
 	// Mark local addresses and journal local transactions
 	if local {
 		if !pool.locals.contains(from) {
-			log.Info("Setting new local account", "address", from)
+			log.Infof("Setting new local account,address: %s", from.String())
 			pool.locals.add(from)
 		}
 	}
@@ -912,7 +916,7 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 		newNum := newHead.Number.Uint64()
 
 		if depth := uint64(math.Abs(float64(oldNum) - float64(newNum))); depth > 64 {
-			log.Debug("Skipping deep transaction reorg", "depth", depth)
+			log.Debugf("Skipping deep transaction reorg,depth: %d", depth)
 		} else {
 			// Reorg seems shallow enough to pull in all transactions into memory
 			var discarded, included types.Transactions
@@ -924,26 +928,38 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 			for rem.NumberU64() > add.NumberU64() {
 				discarded = append(discarded, rem.Transactions()...)
 				if rem = pool.chain.GetBlock(rem.ParentHash(), rem.NumberU64()-1); rem == nil {
-					log.Error("Unrooted old chain seen by tx pool", "block", oldHead.Number, "hash", oldHead.Hash())
+					log.WithFields(log.Fields{
+						"block": oldHead.Number,
+						"hash":  oldHead.Hash().String(),
+					}).Error("Unrooted old chain seen by tx pool")
 					return
 				}
 			}
 			for add.NumberU64() > rem.NumberU64() {
 				included = append(included, add.Transactions()...)
 				if add = pool.chain.GetBlock(add.ParentHash(), add.NumberU64()-1); add == nil {
-					log.Error("Unrooted new chain seen by tx pool", "block", newHead.Number, "hash", newHead.Hash())
+					log.WithFields(log.Fields{
+						"block": newHead.Number,
+						"hash":  newHead.Hash().String(),
+					}).Error("Unrooted new chain seen by tx pool")
 					return
 				}
 			}
 			for rem.Hash() != add.Hash() {
 				discarded = append(discarded, rem.Transactions()...)
 				if rem = pool.chain.GetBlock(rem.ParentHash(), rem.NumberU64()-1); rem == nil {
-					log.Error("Unrooted old chain seen by tx pool", "block", oldHead.Number, "hash", oldHead.Hash())
+					log.WithFields(log.Fields{
+						"block": oldHead.Number,
+						"hash":  oldHead.Hash().String(),
+					}).Error("Unrooted old chain seen by tx pool")
 					return
 				}
 				included = append(included, add.Transactions()...)
 				if add = pool.chain.GetBlock(add.ParentHash(), add.NumberU64()-1); add == nil {
-					log.Error("Unrooted new chain seen by tx pool", "block", newHead.Number, "hash", newHead.Hash())
+					log.WithFields(log.Fields{
+						"block": newHead.Number,
+						"hash":  newHead.Hash().String(),
+					}).Error("Unrooted new chain seen by tx pool")
 					return
 				}
 			}
@@ -956,7 +972,7 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	}
 	statedb, err := pool.chain.StateAt(newHead.StateRoot)
 	if err != nil {
-		log.Error("Failed to reset txpool state", "err", err)
+		log.Errorf("Failed to reset txpool state,err: %v", err)
 		return
 	}
 	pool.currentState = statedb
@@ -964,7 +980,7 @@ func (pool *TxPool) reset(oldHead, newHead *types.Header) {
 	pool.currentMaxGas = newHead.GasLimit
 
 	// Inject any transactions discarded due to reorgs
-	log.Debug("Reinjecting stale transactions", "count", len(reinject))
+	log.Debugf("Reinjecting stale transactions,count: %d", len(reinject))
 	senderCacher.recover(pool.signer, reinject)
 	pool.addTxsLocked(reinject, false)
 
