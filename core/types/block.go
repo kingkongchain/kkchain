@@ -266,7 +266,8 @@ func (b *Block) String() string {
 		gaslimit: %d
 		gasused: %d
 		nonce: 0x%x
-	}`+"\n", b.Number(), b.Hash().String(), b.ParentHash().String(), b.StateRoot().String(), b.Difficulty(), b.GasLimit(), b.GasUsed(), b.Nonce())
+		tx: %d
+	}`+"\n", b.Number(), b.Hash().String(), b.ParentHash().String(), b.StateRoot().String(), b.Difficulty(), b.GasLimit(), b.GasUsed(), b.Nonce(), b.Txs.Len())
 	return str
 }
 
@@ -285,7 +286,7 @@ func (b *Block) WithSeal(header *Header) *Block {
 	}
 }
 
-// WithBody returns a new block with the given transaction and uncle contents.
+// WithBody returns a new block with the given transaction.
 func (b *Block) WithBody(transactions []*Transaction) *Block {
 	block := &Block{
 		Head: CopyHeader(b.Head),

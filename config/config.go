@@ -6,10 +6,14 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/invin/kkchain/accounts"
+	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/storage"
 	"github.com/invin/kkchain/storage/memdb"
 	"github.com/invin/kkchain/storage/rocksdb"
+
 	"github.com/spf13/viper"
+	"io/ioutil"
 )
 
 var (
@@ -17,11 +21,13 @@ var (
 		DataDir: DefaultDataDir(),
 	}
 
+	seeds                = []string{"89b8bb2b66a41220a9b8ba8f019c291dc69c8d9b1ee023813f9db8f8bdcd1f76@/ip4/127.0.0.1/tcp/9998"}
 	DefaultNetworkConfig = NetworkConfig{
 		Listen:     "/ip4/127.0.0.1/tcp/9998",
 		PrivateKey: "node1.key",
 		NetworkId:  1,
 		MaxPeers:   20,
+		Seeds:      seeds,
 	}
 
 	DefaultDhtConfig = DhtConfig{
@@ -29,8 +35,17 @@ var (
 	}
 
 	DefaultConsensusConfig = ConsensusConfig{
-		Mine: true,
+		Mine: false,
 		Type: "pow",
+	}
+
+	DefaultAPIConfig = ApiConfig{
+		Rpc:     false,
+		RpcAddr: "/ip4/127.0.0.1/tcp/8545",
+	}
+
+	DefaultAccountConfig = AccountConfig{
+		KeyStoreDir: "",
 	}
 )
 
@@ -44,6 +59,10 @@ type Config struct {
 	Dht *DhtConfig `mapstructure:"dht"`
 
 	Consensus *ConsensusConfig `mapstructure:"consensus"`
+
+	Api *ApiConfig `mapstructure:"api"`
+
+	Account *AccountConfig `mapstructure:"acc"`
 }
 
 // General settings
@@ -71,8 +90,20 @@ type DhtConfig struct {
 }
 
 type ConsensusConfig struct {
-	Mine bool   `mapstructure:"mine"`
-	Type string `mapstructure:"type"`
+	Mine     bool   `mapstructure:"mine"`
+	Type     string `mapstructure:"type"`
+	Coinbase string `mapstructure:"coinbase"`
+}
+
+type ApiConfig struct {
+	Rpc     bool   `mapstructure:"rpc"`
+	RpcAddr string `mapstructure:"rpcaddr"`
+}
+
+type AccountConfig struct {
+	KeyStoreDir string `mapstructure:"keystoredir"`
+	Unlock      string `mapstructure:"unlock"`
+	Password    string `mapstructure:"password"`
 }
 
 func LoadConfig(file string, cfg *Config) error {
@@ -143,4 +174,52 @@ func OpenDatabase(c *Config, name string) (storage.Database, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// AccountConfig determines the settings for scrypt and keydirectory
+func (c *Config) AccountConfig() (int, int, string, error) {
+	scryptN := keystore.StandardScryptN
+	scryptP := keystore.StandardScryptP
+
+	var (
+		keydir string
+		err    error
+	)
+	switch {
+	case filepath.IsAbs(c.Account.KeyStoreDir):
+		keydir = c.Account.KeyStoreDir
+	case c.DataDir != "":
+		if c.Account.KeyStoreDir == "" {
+			keydir = filepath.Join(c.DataDir, "keystore")
+		} else {
+			keydir, err = filepath.Abs(c.Account.KeyStoreDir)
+		}
+	case c.Account.KeyStoreDir != "":
+		keydir, err = filepath.Abs(c.Account.KeyStoreDir)
+	}
+	return scryptN, scryptP, keydir, err
+}
+
+func MakeAccountManager(conf *Config) (*accounts.Manager, string, error) {
+
+	scryptN, scryptP, keydir, err := conf.AccountConfig()
+	var ephemeral string
+	if keydir == "" {
+		// There is no datadir.
+		keydir, err = ioutil.TempDir("", "go-ethereum-keystore")
+		ephemeral = keydir
+	}
+
+	if err != nil {
+		return nil, "", err
+	}
+	if err := os.MkdirAll(keydir, 0700); err != nil {
+		return nil, "", err
+	}
+	// Assemble the account manager and supported backends
+	backends := []accounts.Backend{
+		keystore.NewKeyStore(keydir, scryptN, scryptP),
+	}
+
+	return accounts.NewManager(backends...), ephemeral, nil
 }

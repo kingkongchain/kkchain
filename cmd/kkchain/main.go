@@ -5,12 +5,14 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+
 	//"strconv"
 	"syscall"
 	//"time"
 
 	"github.com/invin/kkchain/config"
 	"github.com/invin/kkchain/node"
+
 	log "github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
 )
@@ -37,10 +39,14 @@ func main() {
 	app.Flags = append(app.Flags, NetworkFlags...)
 	app.Flags = append(app.Flags, DhtFlags...)
 	app.Flags = append(app.Flags, ConsensusFlags...)
+	app.Flags = append(app.Flags, APIFlags...)
+	app.Flags = append(app.Flags, AccountFlags...)
 
 	sort.Sort(cli.FlagsByName(app.Flags))
 
-	app.Commands = []cli.Command{}
+	app.Commands = []cli.Command{
+		accountCommand,
+	}
 
 	sort.Sort(cli.CommandsByName(app.Commands))
 
@@ -89,6 +95,9 @@ func makeConfig(ctx *cli.Context) *config.Config {
 		GeneralConfig: config.DefaultGeneralConfig,
 		Network:       &config.DefaultNetworkConfig,
 		Dht:           &config.DefaultDhtConfig,
+		Consensus:     &config.DefaultConsensusConfig,
+		Api:           &config.DefaultAPIConfig,
+		Account:       &config.AccountConfig{},
 	}
 
 	// Load config file.
@@ -106,10 +115,15 @@ func makeConfig(ctx *cli.Context) *config.Config {
 	networkConfig(ctx, cfg.Network)
 	dhtConfig(ctx, &cfg)
 	consensusConfig(ctx, cfg.Consensus)
+	apiConfig(ctx, cfg.Api)
+	accountConfig(ctx, cfg.Account)
 
 	return &cfg
 }
 
 func makeNode(cfg *config.Config) (*node.Node, error) {
-	return node.New(cfg)
+
+	node, err := node.New(cfg)
+
+	return node, err
 }

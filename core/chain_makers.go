@@ -6,9 +6,11 @@ import (
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus"
+
 	// "github.com/invin/kkchain/consensus/misc"
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
+
 	// "github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/params"
@@ -28,7 +30,6 @@ type BlockGen struct {
 	gasPool  *GasPool
 	txs      []*types.Transaction
 	receipts []*types.Receipt
-	uncles   []*types.Header
 
 	config *params.ChainConfig
 	engine consensus.Engine
@@ -109,11 +110,6 @@ func (b *BlockGen) TxNonce(addr common.Address) uint64 {
 	return b.statedb.GetNonce(addr)
 }
 
-// AddUncle adds an uncle header to the generated block.
-// func (b *BlockGen) AddUncle(h *types.Header) {
-// 	b.uncles = append(b.uncles, h)
-// }
-
 // PrevBlock returns a previously generated block by number. It panics if
 // num is greater or equal to the number of the block being generated.
 // For index -1, PrevBlock returns the parent block given to GenerateChain.
@@ -143,7 +139,7 @@ func (b *BlockGen) OffsetTime(seconds int64) {
 // intermediate states and should contain the parent's state trie.
 //
 // The generator function is called with a new block generator for
-// every block. Any transactions and uncles added to the generator
+// every block. Any transactions added to the generator
 // become part of the block. If gen is nil, the blocks will be empty
 // and their coinbase will be the zero address.
 //
@@ -213,11 +209,17 @@ func makeHeader(chain consensus.ChainReader, parent *types.Block, state *state.S
 	return &types.Header{
 		StateRoot:  state.IntermediateRoot(false),
 		ParentHash: parent.Hash(),
-		// Coinbase:   parent.Coinbase(),
-		Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
-		GasLimit:   5000,
-		Number:     new(big.Int).Add(parent.Number(), common.Big1),
-		Time:       time,
+		//Coinbase:   parent.Coinbase(),
+		//Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
+		Difficulty: engine.CalcDifficulty(chain, time.Uint64(), &types.Header{
+			Number:     parent.Number(),
+			Time:       new(big.Int).Sub(time, big.NewInt(10)),
+			Difficulty: parent.Difficulty(),
+			//UncleHash:  parent.UncleHash(),
+		}),
+		GasLimit: CalcGasLimit(parent),
+		Number:   new(big.Int).Add(parent.Number(), common.Big1),
+		Time:     time,
 	}
 }
 
@@ -237,4 +239,37 @@ func makeBlockChain(parent *types.Block, n int, engine consensus.Engine, db stor
 		b.SetCoinbase(common.Address{0: byte(seed), 19: byte(i)})
 	})
 	return blocks
+}
+
+// AddTxWithChain adds a transaction to the generated block. If no coinbase has
+// been set, the block's coinbase is set to the zero address.
+//
+// AddTxWithChain panics if the transaction cannot be executed. In addition to
+// the protocol-imposed limitations (gas limit, etc.), there are some
+// further limitations on the content of transactions that can be
+// added. If contract code relies on the BLOCKHASH instruction,
+// the block in chain will be returned.
+func (b *BlockGen) AddTxWithChain(bc *BlockChain, tx *types.Transaction) {
+	if b.gasPool == nil {
+		b.SetCoinbase(common.Address{})
+	}
+	b.statedb.Prepare(tx.Hash(), common.Hash{}, len(b.txs))
+	receipt, _, err := ApplyTransaction(b.config, bc, &b.header.Miner, b.gasPool, b.statedb, b.header, tx, &b.header.GasUsed, vm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	b.txs = append(b.txs, tx)
+	b.receipts = append(b.receipts, receipt)
+}
+
+// AddTx adds a transaction to the generated block. If no coinbase has
+// been set, the block's coinbase is set to the zero address.
+//
+// AddTx panics if the transaction cannot be executed. In addition to
+// the protocol-imposed limitations (gas limit, etc.), there are some
+// further limitations on the content of transactions that can be
+// added. Notably, contract code relying on the BLOCKHASH instruction
+// will panic during execution.
+func (b *BlockGen) AddTx(tx *types.Transaction) {
+	b.AddTxWithChain(nil, tx)
 }

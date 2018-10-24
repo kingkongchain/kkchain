@@ -298,9 +298,10 @@ func DefaultGenesisBlock() *Genesis {
 		Config:    params.MainnetChainConfig,
 		Nonce:     66,
 		ExtraData: hexutil.MustDecode("0x11bbe8db4e347b4e8c937c1c8370e4b5ed33adb3db69cbdb7a38e1e50b1b82fa"),
-		GasLimit:  5000,
+		GasLimit:  GenesisGasLimit,
 		//Difficulty: big.NewInt(17179869184),
-		Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
+		//Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
+		Difficulty: GenesisDifficulty,
 		Alloc: map[common.Address]GenesisAccount{
 			common.HexToAddress("0x67b1043995cf9fb7dd27f6f7521342498d473c05"): {Balance: big.NewInt(100000000000000000)},
 			common.HexToAddress("0x6b24b0b9852ee1e9f658c8d425dc9a10fc905146"): {Balance: big.NewInt(100000000000000000)},

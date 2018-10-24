@@ -212,14 +212,17 @@ func (n *Network) bootstrap(p goprocess.Process) {
 			if node == self {
 				log.Warn("refuse to connect self")
 			} else {
-				log.Infof("connect to %s", node)
+				log.Infof("ready to connect %s", node)
 			}
 		}
 
 		// Parse peer address to get IP
 		peer, err := dht.ParsePeerAddr(node)
 		if err != nil {
-			log.Errorf("failed to parse peer address,error: %v", err)
+			log.WithFields(log.Fields{
+				"nodeAddr": node,
+				"error":    err,
+			}).Error("failed to parse peer address from bootstrap nodes")
 			continue
 		}
 

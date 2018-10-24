@@ -346,9 +346,8 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 	}
 
 	// Write other block data using a batch.
-	//TODO:implement writeReceipts
-	//batch := bc.db.NewBatch()
-	//rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receipts)
+	batch := bc.db.NewBatch()
+	rawdb.WriteReceipts(batch, block.Hash(), block.NumberU64(), receipts)
 
 	// If the total difficulty is higher than our known, add it to the canonical chain
 	// Second clause in the if statement reduces the vulnerability to selfish mining.
@@ -367,14 +366,14 @@ func (bc *BlockChain) WriteBlockWithState(block *types.Block, receipts []*types.
 			}
 		}
 		// Write the positional metadata for transaction/receipt lookups and preimages
-		//rawdb.WriteTxLookupEntries(batch, block)
-		//rawdb.WritePreimages(batch, block.NumberU64(), state.Preimages())
+		rawdb.WriteTxLookupEntries(batch, block)
+		rawdb.WritePreimages(batch, block.NumberU64(), state.Preimages())
 
 	}
 
-	// if err := batch.Write(); err != nil {
-	// 	return err
-	// }
+	if err := batch.Write(); err != nil {
+		return err
+	}
 
 	// Set new head.
 	bc.insert(block)

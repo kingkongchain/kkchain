@@ -14,6 +14,7 @@ import (
 	"github.com/invin/kkchain/event"
 
 	"fmt"
+
 	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/params"
 	log "github.com/sirupsen/logrus"
@@ -51,7 +52,7 @@ type worker struct {
 	engine consensus.Engine
 
 	//tx pool add new txs
-	txsCh  chan types.Transactions
+	txsCh  chan core.NewTxsEvent
 	txsSub event.Subscription
 
 	//new block inserted to chain
@@ -77,7 +78,7 @@ func newWorker(config *params.ChainConfig, bc *core.BlockChain, txpool *core.TxP
 		chain:       bc,
 		txpool:      txpool,
 		engine:      engine,
-		txsCh:       make(chan types.Transactions),
+		txsCh:       make(chan core.NewTxsEvent),
 		chainHeadCh: make(chan core.ChainHeadEvent),
 		taskCh:      make(chan *task),
 		resultCh:    make(chan *task),
@@ -85,7 +86,7 @@ func newWorker(config *params.ChainConfig, bc *core.BlockChain, txpool *core.TxP
 	}
 
 	// Subscribe events from tx pool
-	w.txsSub = txpool.SubscribeTxsEvent(w.txsCh)
+	w.txsSub = txpool.SubscribeNewTxsEvent(w.txsCh)
 
 	// Subscribe events from inbound handler
 	w.chainHeadSub = bc.SubscribeChainHeadEvent(w.chainHeadCh)
@@ -111,7 +112,7 @@ func (w *worker) mineLoop() {
 	for {
 		select {
 		case txs := <-w.txsCh:
-			for _, tx := range txs {
+			for _, tx := range txs.Txs {
 				fmt.Println(tx)
 			}
 		case <-w.chainHeadCh:
@@ -279,8 +280,12 @@ func (w *worker) commitTask() {
 		}
 	}
 
-	//apply txs and get block TODO: commit txs and apply
-	w.commitTransactions(txs, w.miner)
+	if len(txs) > 0 {
+		//apply txs and get block
+		if w.commitTransactions(txs, w.miner) == false {
+			return
+		}
+	}
 
 	// Deep copy receipts here to avoid interaction between different tasks.
 	receipts := make([]*types.Receipt, len(w.currentCtx.receipts))
@@ -288,7 +293,7 @@ func (w *worker) commitTask() {
 		receipts[i] = new(types.Receipt)
 		*receipts[i] = *l
 	}
-	block := types.NewBlock(header, txs, receipts)
+	block := types.NewBlock(header, w.currentCtx.txs, receipts)
 
 	//finalize block before consensus
 	s := w.currentCtx.state.Copy()
@@ -439,6 +444,7 @@ func (w *worker) blockinfo(desc string, block *types.Block) {
 		"gasLimit":   block.GasLimit(),
 		"gasUsed":    block.GasUsed(),
 		"nonce":      block.Nonce(),
+		"tx":         block.Txs.Len(),
 	}).Info(desc)
 }
 

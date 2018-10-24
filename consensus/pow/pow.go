@@ -33,10 +33,6 @@ var (
 var (
 	errLargeBlockTime    = errors.New("timestamp too big")
 	errZeroBlockTime     = errors.New("timestamp equals parent's")
-	errTooManyUncles     = errors.New("too many uncles")
-	errDuplicateUncle    = errors.New("duplicate uncle")
-	errUncleIsAncestor   = errors.New("uncle is ancestor")
-	errDanglingUncle     = errors.New("uncle's parent is not ancestor")
 	errInvalidDifficulty = errors.New("non-positive difficulty")
 	errInvalidMixDigest  = errors.New("invalid mix digest")
 	errInvalidPoW        = errors.New("invalid proof-of-work")
@@ -78,10 +74,10 @@ func (ethash *Ethash) Initialize(chain consensus.ChainReader, header *types.Head
 
 func (ethash *Ethash) Finalize(chain consensus.ChainReader, state *state.StateDB, block *types.Block) error {
 	header := block.HeaderWithoutCopy()
-	// Accumulate any block and uncle rewards and commit the final state root
+	// Accumulate any block rewards and commit the final state root
 	accumulateRewards(state, header)
 
-	header.StateRoot = state.IntermediateRoot(false)
+	header.StateRoot = state.IntermediateRoot(true)
 
 	return nil
 }
@@ -397,14 +393,13 @@ func calcDifficultyFrontier(time uint64, parent *types.Header) *big.Int {
 	return diff
 }
 
-// AccumulateRewards credits the coinbase of the given block with the mining
-// reward. The total reward consists of the static block reward and rewards for
-// included uncles. The coinbase of each uncle block is also rewarded.
+// AccumulateRewards credits the coinbase of the given block with the mining reward.
+// The total reward consists of the static block reward.
 func accumulateRewards(state *state.StateDB, header *types.Header) {
 	// Select the correct block reward based on chain progression
 	blockReward := FrontierBlockReward
 
-	// Accumulate the rewards for the miner and any included uncles
+	// Accumulate the rewards for the miner
 	reward := new(big.Int).Set(blockReward)
 	state.AddBalance(header.Miner, reward)
 }

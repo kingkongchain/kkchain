@@ -27,8 +27,8 @@ func NewStateProcessor(config *params.ChainConfig, bc *BlockChain) *StateProcess
 }
 
 // Process processes the state changes according to the rules by running
-// the transaction messages using the statedb and applying any rewards to both
-// the processor (coinbase) and any included uncles.
+// the transaction messages using the statedb and applying any rewards to
+// the processor (coinbase).
 //
 // Process returns the receipts and logs accumulated during the process and
 // returns the amount of gas that was used in the process. If any of the
