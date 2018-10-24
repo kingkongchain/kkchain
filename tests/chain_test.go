@@ -50,7 +50,7 @@ func TestExternalAccountTransfer(t *testing.T) {
 	genesis := gspec.MustCommit(db)
 
 	signer := types.NewInitialSigner(new(big.Int).SetInt64(1))
-	chain, _ := core.GenerateChain(gspec.Config, genesis, pow.NewFaker(), db, 1, func(i int, gen *core.BlockGen) {
+	chain, receipts := core.GenerateChain(gspec.Config, genesis, pow.NewFaker(), db, 1, func(i int, gen *core.BlockGen) {
 		switch i {
 		case 0:
 			// In block 1, addr1 sends addr2 some ether.
@@ -68,15 +68,18 @@ func TestExternalAccountTransfer(t *testing.T) {
 	}
 
 	state, _ := blockchain.State()
+	fmt.Printf("Transfer Info====>\n")
 	fmt.Printf("last block: #%d \n", blockchain.CurrentBlock().Number())
 	fmt.Printf("last block's gaspool:%d \n", blockchain.CurrentBlock().Header().GasLimit)
 	fmt.Printf("balance of addr1:%s\n", state.GetBalance(addr1))
 	fmt.Printf("balance of addr2:%s\n", state.GetBalance(addr2))
+	fmt.Printf("transfer receipts: %#v\n", receipts[0][0])
 
-	t.Log("last block: #", blockchain.CurrentBlock().Number())
-	t.Log("last block's gaspool;: #", blockchain.CurrentBlock().Header().GasLimit)
-	t.Log("balance of addr1:", state.GetBalance(addr1))
-	t.Log("balance of addr2:", state.GetBalance(addr2))
+	// t.Log("last block: #", blockchain.CurrentBlock().Number())
+	// t.Log("last block's gaspool;: #", blockchain.CurrentBlock().Header().GasLimit)
+	// t.Log("balance of addr1:", state.GetBalance(addr1))
+	// t.Log("balance of addr2:", state.GetBalance(addr2))
+
 	// Output:
 	// last block: #1
 	// balance of addr1: 999500
@@ -199,10 +202,12 @@ func TestInvokeUserContract(t *testing.T) {
 	}
 	genesis := gspec.MustCommit(db)
 
-	/*contract source code
+	/*contract source code  complie version：0.4.25
 	pragma solidity ^0.4.0;
 	contract Test {
+	    event Fun(uint256 c);
 	    function fun(uint256 a,uint256 b) returns(uint256 c){
+	        emit Fun(a+b);
 	        return a+b;
 	    }
 	}
