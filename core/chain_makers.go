@@ -6,9 +6,11 @@ import (
 
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/consensus"
+
 	// "github.com/invin/kkchain/consensus/misc"
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
+
 	// "github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/params"
@@ -207,11 +209,17 @@ func makeHeader(chain consensus.ChainReader, parent *types.Block, state *state.S
 	return &types.Header{
 		StateRoot:  state.IntermediateRoot(false),
 		ParentHash: parent.Hash(),
-		// Coinbase:   parent.Coinbase(),
-		Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
-		GasLimit:   5000,
-		Number:     new(big.Int).Add(parent.Number(), common.Big1),
-		Time:       time,
+		//Coinbase:   parent.Coinbase(),
+		//Difficulty: new(big.Int).SetBytes([]byte{0x20, 0x00}),
+		Difficulty: engine.CalcDifficulty(chain, time.Uint64(), &types.Header{
+			Number:     parent.Number(),
+			Time:       new(big.Int).Sub(time, big.NewInt(10)),
+			Difficulty: parent.Difficulty(),
+			//UncleHash:  parent.UncleHash(),
+		}),
+		GasLimit: CalcGasLimit(parent),
+		Number:   new(big.Int).Add(parent.Number(), common.Big1),
+		Time:     time,
 	}
 }
 
