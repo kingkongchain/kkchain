@@ -280,8 +280,12 @@ func (w *worker) commitTask() {
 		}
 	}
 
-	//apply txs and get block TODO: commit txs and apply
-	w.commitTransactions(txs, w.miner)
+	if len(txs) > 0 {
+		//apply txs and get block
+		if w.commitTransactions(txs, w.miner) == false {
+			return
+		}
+	}
 
 	// Deep copy receipts here to avoid interaction between different tasks.
 	receipts := make([]*types.Receipt, len(w.currentCtx.receipts))
@@ -440,6 +444,7 @@ func (w *worker) blockinfo(desc string, block *types.Block) {
 		"gasLimit":   block.GasLimit(),
 		"gasUsed":    block.GasUsed(),
 		"nonce":      block.Nonce(),
+		"tx":         block.Txs.Len(),
 	}).Info(desc)
 }
 
