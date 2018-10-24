@@ -85,8 +85,11 @@ func New(cfg *config.Config) (*Node, error) {
 	if err != nil {
 		return nil, err
 	}
-
-	node.txPool = core.NewTxPool(core.DefaultTxPoolConfig, chainConfig, node.blockchain)
+	txConfig := core.DefaultTxPoolConfig
+	if txConfig.Journal != "" {
+		txConfig.Journal = cfg.ResolvePath(txConfig.Journal)
+	}
+	node.txPool = core.NewTxPool(txConfig, chainConfig, node.blockchain)
 	if cfg.Consensus.Mine {
 		node.miner = miner.New(chainConfig, node.blockchain, node.txPool, node.engine)
 	}

@@ -293,7 +293,7 @@ func (w *worker) commitTask() {
 		receipts[i] = new(types.Receipt)
 		*receipts[i] = *l
 	}
-	block := types.NewBlock(header, txs, receipts)
+	block := types.NewBlock(header, w.currentCtx.txs, receipts)
 
 	//finalize block before consensus
 	s := w.currentCtx.state.Copy()
