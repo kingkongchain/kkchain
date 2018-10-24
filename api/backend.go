@@ -7,8 +7,10 @@ import (
 
 	"github.com/invin/kkchain/accounts"
 	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
+	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/rpc"
 	"github.com/invin/kkchain/storage"
@@ -29,6 +31,7 @@ type Backend interface {
 	StateAndHeaderByNumber(ctx context.Context, blockNr rpc.BlockNumber) (*state.StateDB, *types.Header, error)
 	GetBlock(ctx context.Context, blockHash common.Hash) (*types.Block, error)
 	GetTd(blockHash common.Hash) *big.Int
+	GetEVM(ctx context.Context, msg core.Message, state *state.StateDB, header *types.Header, vmCfg vm.Config) (*vm.EVM, func() error, error)
 
 	// TxPool API
 	SendTx(ctx context.Context, signedTx *types.Transaction) error

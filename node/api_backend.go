@@ -7,9 +7,12 @@ import (
 	"github.com/invin/kkchain/accounts"
 	"github.com/invin/kkchain/api"
 	"github.com/invin/kkchain/common"
+	"github.com/invin/kkchain/common/math"
+	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/rawdb"
 	"github.com/invin/kkchain/core/state"
 	"github.com/invin/kkchain/core/types"
+	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/rpc"
 	"github.com/invin/kkchain/storage"
@@ -108,4 +111,12 @@ func (b *APIBackend) GetBlock(ctx context.Context, hash common.Hash) (*types.Blo
 
 func (b *APIBackend) GetPoolTransaction(hash common.Hash) *types.Transaction {
 	return b.kkchain.txPool.Get(hash)
+}
+
+func (b *APIBackend) GetEVM(ctx context.Context, msg core.Message, state *state.StateDB, header *types.Header, vmCfg vm.Config) (*vm.EVM, func() error, error) {
+	state.SetBalance(msg.From(), math.MaxBig256)
+	vmError := func() error { return nil }
+
+	context := core.NewEVMContext(msg, header, b.kkchain.BlockChain(), nil)
+	return vm.NewEVM(context, state, b.kkchain.ChainConfig(), vmCfg), vmError, nil
 }

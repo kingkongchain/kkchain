@@ -13,8 +13,10 @@ import (
 	"github.com/invin/kkchain/accounts/keystore"
 	"github.com/invin/kkchain/common"
 	"github.com/invin/kkchain/common/hexutil"
+	"github.com/invin/kkchain/core"
 	"github.com/invin/kkchain/core/rawdb"
 	"github.com/invin/kkchain/core/types"
+	"github.com/invin/kkchain/core/vm"
 	"github.com/invin/kkchain/crypto"
 	"github.com/invin/kkchain/params"
 	"github.com/invin/kkchain/rlp"
@@ -726,6 +728,180 @@ func (s *PublicBlockChainAPI) GetBlockByHash(ctx context.Context, blockHash comm
 		return s.rpcOutputBlock(block, true, fullTx)
 	}
 	return nil, err
+}
+
+// GetCode returns the code stored at the given address in the state for the given block number.
+func (s *PublicBlockChainAPI) GetCode(ctx context.Context, address common.Address, blockNr rpc.BlockNumber) (hexutil.Bytes, error) {
+	state, _, err := s.b.StateAndHeaderByNumber(ctx, blockNr)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	code := state.GetCode(address)
+	return code, state.Error()
+}
+
+// GetStorageAt returns the storage from the state at the given address, key and
+// block number. The rpc.LatestBlockNumber and rpc.PendingBlockNumber meta block
+// numbers are also allowed.
+func (s *PublicBlockChainAPI) GetStorageAt(ctx context.Context, address common.Address, key string, blockNr rpc.BlockNumber) (hexutil.Bytes, error) {
+	state, _, err := s.b.StateAndHeaderByNumber(ctx, blockNr)
+	if state == nil || err != nil {
+		return nil, err
+	}
+	res := state.GetState(address, common.HexToHash(key))
+	return res[:], state.Error()
+}
+
+// CallArgs represents the arguments for a call.
+type CallArgs struct {
+	From     common.Address  `json:"from"`
+	To       *common.Address `json:"to"`
+	Gas      hexutil.Uint64  `json:"gas"`
+	GasPrice hexutil.Big     `json:"gasPrice"`
+	Value    hexutil.Big     `json:"value"`
+	Data     hexutil.Bytes   `json:"data"`
+}
+
+func (s *PublicBlockChainAPI) doCall(ctx context.Context, args CallArgs, blockNr rpc.BlockNumber, vmCfg vm.Config, timeout time.Duration) ([]byte, uint64, bool, error) {
+	defer func(start time.Time) { log.Debug("Executing EVM call finished", "runtime", time.Since(start)) }(time.Now())
+
+	state, header, err := s.b.StateAndHeaderByNumber(ctx, blockNr)
+	if state == nil || err != nil {
+		return nil, 0, false, err
+	}
+	// Set sender address or use a default if none specified
+	addr := args.From
+	if addr == (common.Address{}) {
+		if wallets := s.b.AccountManager().Wallets(); len(wallets) > 0 {
+			if accounts := wallets[0].Accounts(); len(accounts) > 0 {
+				addr = accounts[0].Address
+			}
+		}
+	}
+	// Set default gas & gas price if none were set
+	gas, gasPrice := uint64(args.Gas), args.GasPrice.ToInt()
+	if gas == 0 {
+		gas = math.MaxUint64 / 2
+	}
+	if gasPrice.Sign() == 0 {
+		gasPrice = new(big.Int).SetUint64(defaultGasPrice)
+	}
+
+	// Create new call message
+	msg := types.NewMessage(addr, args.To, 0, args.Value.ToInt(), gas, gasPrice, args.Data, false)
+
+	// Setup context so it may be cancelled the call has completed
+	// or, in case of unmetered gas, setup a context with a timeout.
+	var cancel context.CancelFunc
+	if timeout > 0 {
+		ctx, cancel = context.WithTimeout(ctx, timeout)
+	} else {
+		ctx, cancel = context.WithCancel(ctx)
+	}
+	// Make sure the context is cancelled when the call has completed
+	// this makes sure resources are cleaned up.
+	defer cancel()
+
+	// Get a new instance of the EVM.
+	evm, vmError, err := s.b.GetEVM(ctx, msg, state, header, vmCfg)
+	if err != nil {
+		return nil, 0, false, err
+	}
+	// Wait for the context to be done and cancel the evm. Even if the
+	// EVM has finished, cancelling may be done (repeatedly)
+	go func() {
+		<-ctx.Done()
+		evm.Cancel()
+	}()
+
+	// Setup the gas pool (also for unmetered requests)
+	// and apply the message.
+	gp := new(core.GasPool).AddGas(math.MaxUint64)
+	res, gas, failed, err := core.ApplyMessage(evm, msg, gp)
+	if err := vmError(); err != nil {
+		return nil, 0, false, err
+	}
+	return res, gas, failed, err
+}
+
+// Call executes the given transaction on the state for the given block number.
+// It doesn't make and changes in the state/blockchain and is useful to execute and retrieve values.
+func (s *PublicBlockChainAPI) Call(ctx context.Context, args CallArgs, blockNr rpc.BlockNumber) (hexutil.Bytes, error) {
+	result, _, _, err := s.doCall(ctx, args, blockNr, vm.Config{}, 5*time.Second)
+	return (hexutil.Bytes)(result), err
+}
+
+// EstimateGas returns an estimate of the amount of gas needed to execute the
+// given transaction against the current pending block.
+func (s *PublicBlockChainAPI) EstimateGas(ctx context.Context, args CallArgs) (hexutil.Uint64, error) {
+	// Binary search the gas requirement, as it may be higher than the amount used
+	var (
+		lo  uint64 = params.TxGas - 1
+		hi  uint64
+		cap uint64
+	)
+	if uint64(args.Gas) >= params.TxGas {
+		hi = uint64(args.Gas)
+	} else {
+		// Retrieve the current pending block to act as the gas ceiling
+		block, err := s.b.BlockByNumber(ctx, rpc.PendingBlockNumber)
+		if err != nil {
+			return 0, err
+		}
+		hi = block.GasLimit()
+	}
+	cap = hi
+
+	// Create a helper to check if a gas allowance results in an executable transaction
+	executable := func(gas uint64) bool {
+		args.Gas = hexutil.Uint64(gas)
+
+		_, _, failed, err := s.doCall(ctx, args, rpc.PendingBlockNumber, vm.Config{}, 0)
+		if err != nil || failed {
+			return false
+		}
+		return true
+	}
+	// Execute the binary search and hone in on an executable gas limit
+	for lo+1 < hi {
+		mid := (hi + lo) / 2
+		if !executable(mid) {
+			lo = mid
+		} else {
+			hi = mid
+		}
+	}
+	// Reject the transaction as invalid if it still fails at the highest allowance
+	if hi == cap {
+		if !executable(hi) {
+			return 0, fmt.Errorf("gas required exceeds allowance or always failing transaction")
+		}
+	}
+	return hexutil.Uint64(hi), nil
+}
+
+// ExecutionResult groups all structured logs emitted by the EVM
+// while replaying a transaction in debug mode as well as transaction
+// execution status, the amount of gas used and the return value
+type ExecutionResult struct {
+	Gas         uint64         `json:"gas"`
+	Failed      bool           `json:"failed"`
+	ReturnValue string         `json:"returnValue"`
+	StructLogs  []StructLogRes `json:"structLogs"`
+}
+
+// StructLogRes stores a structured log emitted by the EVM while replaying a
+// transaction in debug mode
+type StructLogRes struct {
+	Pc      uint64             `json:"pc"`
+	Op      string             `json:"op"`
+	Gas     uint64             `json:"gas"`
+	GasCost uint64             `json:"gasCost"`
+	Depth   int                `json:"depth"`
+	Error   error              `json:"error,omitempty"`
+	Stack   *[]string          `json:"stack,omitempty"`
+	Memory  *[]string          `json:"memory,omitempty"`
+	Storage *map[string]string `json:"storage,omitempty"`
 }
 
 // RPCMarshalBlock converts the given block to the RPC output which depends on fullTx. If inclTx is true transactions are
