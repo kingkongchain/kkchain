@@ -59,7 +59,7 @@ func New(cfg *config.Config) (*Node, error) {
 
 	chainConfig, genesisHash, genesisErr := core.SetupGenesisBlock(chainDb, nil)
 	if _, ok := genesisErr.(*params.ConfigCompatError); genesisErr != nil && !ok {
-		log.Errorf("setup genesis failed： %s\n", genesisErr)
+		log.Errorf("setup genesis failed: %s", genesisErr)
 		return nil, genesisErr
 	}
 
@@ -142,7 +142,7 @@ func (n *Node) Coinbase() (eb common.Address, err error) {
 			n.coinbase = coinbase
 			n.lock.Unlock()
 
-			log.Info("Coinbase automatically configured", "address", coinbase)
+			log.Infof("Coinbase automatically configured,address: %s", coinbase.String())
 			return coinbase, nil
 		}
 	}

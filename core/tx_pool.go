@@ -757,6 +757,10 @@ func (pool *TxPool) journalTx(from common.Address, tx *types.Transaction) {
 // whitelisted, preventing any associated transaction from being dropped out of
 // the pool due to pricing constraints.
 func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
+	var receiver string
+	if tx.Receiver() != nil {
+		receiver = tx.Receiver().String()
+	}
 	// If the transaction is already known, discard it
 	hash := tx.Hash()
 	if pool.all.Get(hash) != nil {
@@ -811,7 +815,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
 		log.WithFields(log.Fields{
 			"hash": hash.String(),
 			"from": from.String(),
-			"to":   tx.Receiver().String(),
+			"to":   receiver,
 		}).Info("Pooled new executable transaction")
 
 		// We've directly injected a replacement transaction, notify subsystems
@@ -836,7 +840,7 @@ func (pool *TxPool) add(tx *types.Transaction, local bool) (bool, error) {
 	log.WithFields(log.Fields{
 		"hash": hash.String(),
 		"from": from.String(),
-		"to":   tx.Receiver().String(),
+		"to":   receiver,
 	}).Info("Pooled new future transaction")
 	return replace, nil
 }
