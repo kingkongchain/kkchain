@@ -1,0 +1,82 @@
+syntax = "proto3";
+
+package chain;
+
+option java_multiple_files = true;
+option java_package = "org.invin.kkchain.proto.handshake";
+option java_outer_classname = "KKChainProto";
+
+import "google/protobuf/any.proto";
+
+import "gogo/protobuf/gogoproto/gogo.proto";
+
+option (gogoproto.equal_all) = true;
+option (gogoproto.goproto_stringer_all) = false;
+option (gogoproto.gostring_all) = true;
+option (gogoproto.marshaler_all) = true;
+option (gogoproto.sizer_all) = true;
+option (gogoproto.stringer_all) = true;
+option (gogoproto.unmarshaler_all) = true;
+option (gogoproto.verbose_equal_all) = true;
+
+// Test options
+// FIXME: uncomment when fixed https://github.com/gogo/protobuf/issues/407
+// option (gogoproto.populate_all) = true;
+// option (gogoproto.testgen_all) = true;
+
+message ChainStatusMsg {
+   uint64 chainID = 1;
+
+   // local total difficult
+   bytes td = 2;
+   bytes currentBlockHash = 3;
+   uint64 currentBlockNum = 4;
+   bytes genesisBlockHash = 5;
+}
+
+message GetBlockHeadersMsg {
+   uint64 startNum = 1;
+   bytes startHash = 2; // optional
+   uint64 amount = 3;
+   uint64 skip = 4;
+   bool reverse = 5;
+}
+
+message GetBlocksMsg {
+   uint64 startNum = 1;
+   uint64 amount = 2;
+}
+
+message DataMsg {
+   bytes data = 1;
+}
+
+message Message {
+    enum Type {
+        CHAIN_STATUS = 0;
+		GET_BLOCK_BODIES = 1;
+		BLOCKS_BODIES = 2;
+		GET_BLOCK_HEADERS = 3;
+        BLOCK_HEADERS = 4;
+        TRANSACTIONS = 5;
+        GET_RECEIPTS = 6;
+        RECEIPTS = 7;
+        NEW_BLOCK_HASHS = 8;
+        NEW_BLOCK = 9;
+        GET_BLOCKS = 10;
+        BLOCKS = 11;
+    }
+
+    // defines what type of message it is.
+	Type type = 1;
+
+    // message content
+    ChainStatusMsg chainStatusMsg = 2;
+    GetBlockHeadersMsg getBlockHeadersMsg = 3;
+    DataMsg dataMsg = 4;
+    GetBlocksMsg getBlocksMsg = 5;
+}
+
+
+
+
